@@ -1,0 +1,7 @@
+{
+  "tool": "built-in image_gen",
+  "brand": "TalkTurn",
+  "asset": "talkturn-logo.png",
+  "transparent_background": true,
+  "note": "The existing abstract t-and-return-arrow symbol is retained; its artwork has no wordmark."
+}

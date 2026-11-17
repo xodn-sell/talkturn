@@ -1,0 +1,325 @@
+"""TalkTurn terminal entry point."""
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from rich.console import Console
+from rich.panel import Panel
+from . import __version__
+from .commands import parse, execute, HELP, selected_section, select_section, SECTION_LABELS, SECTION_MENU
+from .runtime import ROOT, executable, read_json, write_json, locked
+
+console = Console(highlight=False)
+RELAY_MODELS={'1':'gpt-6-luna','luna':'gpt-6-luna','gpt-6-luna':'gpt-6-luna',
+              '2':'claude-haiku-5-5','haiku':'claude-haiku-5-5','claude-haiku-5-5':'claude-haiku-5-5'}
+
+
+def choose_relay_model():
+    current=read_json('delivery.json',{}).get('model','gpt-6-luna')
+    from .terminal import choice_menu
+    choices=[('gpt-6-luna','GPT-6 Luna · 기존 Codex 로그인 사용'),
+             ('claude-haiku-5-5','Claude Haiku 5.5 · 기존 Claude 로그인 사용')]
+    chosen=choice_menu(console,'카톡 답장 중계 모델',choices,selected=1 if current=='claude-haiku-5-5' else 0)
+    return chosen
+
+
+def save_relay(model):
+    with locked('settings.lock'):
+        data=read_json('delivery.json',{})
+        data['model']=model
+        write_json('delivery.json',data)
+
+
+def edit_computer_name():
+    from .computer import computer_name,computer_label,set_computer_name
+    current=computer_name()
+    try:
+        value=console.input(f'컴퓨터 이름 [Enter: {current}]: ',markup=False)
+    except (KeyboardInterrupt,EOFError):
+        return '컴퓨터 이름 변경 취소.'
+    set_computer_name(value if value else current)
+    return computer_label()
+
+
+def setup(args):
+    from . import service
+    parser = argparse.ArgumentParser(prog='talkturn setup')
+    parser.add_argument('--self-chat', help='사용자가 직접 연 나와의 채팅의 정확한 창 이름')
+    parser.add_argument('--migrate', action='store_true')
+    parser.add_argument('--no-startup', action='store_true')
+    parser.add_argument('--relay-model',type=str.lower,choices=['luna','haiku','gpt-6-luna','claude-haiku-5-5'],
+                        help='답장 중계 모델. 새 설정 기본값: gpt-6-luna')
+    parser.add_argument('--section',type=str.lower,choices=['claude','codex','chatgpt','all'],help='처음 표시할 AI 섹션')
+    parser.add_argument('--computer-name',help='TalkTurn에 표시할 이 컴퓨터의 이름 (기본: 내 PC)')
+    options = parser.parse_args(args)
+    relay_model=RELAY_MODELS.get(options.relay_model)
+    if relay_model is None and sys.stdin.isatty():
+        relay_model=choose_relay_model()
+        if relay_model is None: return '설정 취소.'
+    if options.computer_name is not None and not options.migrate:
+        from .computer import set_computer_name
+        set_computer_name(options.computer_name)
+    elif not options.self_chat and not options.migrate and sys.stdin.isatty():
+        prior=read_json('delivery.json',{})
+        if not prior.get('computer_name') and not prior.get('window_id'):
+            if edit_computer_name()=='컴퓨터 이름 변경 취소.':
+                return '설정 취소.'
+    if options.migrate:
+        service.migrate_legacy()
+        if options.computer_name is not None:
+            from .computer import set_computer_name
+            set_computer_name(options.computer_name)
+        service.pair(read_json('delivery.json',{})['room_name'])
+    else:
+        title = options.self_chat
+        existing=read_json('delivery.json',{})
+        reuse=not title and existing.get('window_id') and not service.delivery_issues(include_worker=False)
+        if reuse:
+            title=existing['room_name']
+            console.print('기존 나와의 채팅 연결을 사용합니다.',markup=False)
+        if not title:
+            if not sys.stdin.isatty():
+                raise ValueError('talkturn setup --self-chat "나와의 채팅 창 이름"')
+            console.print('카카오톡에서 본인의 ‘나와의 채팅’을 별도 창으로 열어 주세요. 연결 후 talkturn in을 전송합니다.', markup=False)
+            rows = service.chat_windows()
+            if not rows:
+                return '나와의 채팅 창이 없습니다. 별도 창을 연 뒤 setup을 다시 실행하세요.'
+            for index, row in enumerate(rows, 1):
+                console.print(f"  {index}. {row['title']}",markup=False)
+            answer = input('나와의 채팅 번호 (취소: Enter): ').strip()
+            if not answer:
+                return '연결 취소.'
+            if not answer.isdigit() or not 1 <= int(answer) <= len(rows):
+                raise ValueError('목록의 번호 입력 필요.')
+            title = rows[int(answer)-1]['title']
+        if not reuse:
+            service.pair(title)
+    if relay_model is not None:
+        save_relay(relay_model)
+    if options.section:
+        select_section(options.section)
+    service.install_hooks()
+    service.startup(not options.no_startup)
+    result = service.start()
+    if options.migrate:
+        service.bridge_legacy_hook()
+    return result+'\n답장 중계: '+read_json('delivery.json',{}).get('model','gpt-6-luna')
+
+
+def dispatch(parts):
+    if parts[0]=='account-add' and len(parts)<=2 and sys.stdin.isatty():
+        from .account_menu import add
+        return add(console,parts[1] if len(parts)==2 else 'claude')
+    if parts[0]=='switch' and len(parts)<=2 and sys.stdin.isatty():
+        from .account_menu import switch
+        return switch(console,parts[1] if len(parts)==2 else 'claude')
+    if parts[0]=='connect' and len(parts)<=2:
+        from .connections import connect,menu
+        if len(parts)==2:
+            return connect(parts[1])
+        if not sys.stdin.isatty():
+            return 'AI 연결 추가: talkturn connect codex 또는 talkturn connect claude'
+        return menu(console)
+    if parts[0]=='ui':
+        return '웹 화면은 중지했습니다. talkturn을 실행해 터미널에서 사용하세요.'
+    if parts[0]=='account-add' and len(parts)==2:
+        from .providers import add_account
+        account=add_account(parts[1])
+        return f"{parts[1]} · {account['number']}번 {account['label']} 등록 확인."
+    if parts[0] == 'setup':
+        return setup(parts[1:])
+    if parts == ['uninstall']:
+        from .service import uninstall
+        return uninstall()
+    if parts[0] in ('codex','claude'):
+        # Interactive launch stays in the user's terminal. Arguments remain argv, never shell text.
+        result = subprocess.run([executable(parts[0]),*parts[1:]])
+        return f'{parts[0]} 종료 코드 {result.returncode}'
+    if parts[0] == 'startup' and len(parts)==2 and parts[1] in ('on','off'):
+        from .service import startup
+        startup(parts[1]=='on')
+        return '로그인 시 자동 시작: '+parts[1]
+    return execute(parts)
+
+
+def interactive():
+    from .terminal import show_dashboard,response,keyboard_pick,page_rows
+    from .sessions import choose,selected,selection_text
+    if not read_json('delivery.json',{}).get('model'):
+        model=choose_relay_model()
+        if model is None: return
+        save_relay(model)
+    view=show_dashboard(console,render=False)
+
+    def pick(value):
+        if value.isdigit():
+            index=int(value)-1
+            visible,_,_=page_rows(view)
+            if not 0<=index<len(visible):
+                raise ValueError('표에 있는 세션 번호를 선택해 주세요.')
+            value=visible[index]['code']
+            return choose(value,{'rows':view['rows'],'fetched_at':time.time()})
+        return choose(value)
+
+    def accept(value):
+        nonlocal view
+        if isinstance(value,dict):
+            provider=value.get('provider',view.get('active_provider','claude'))
+            try:
+                if value['action']=='connect':
+                    from .connections import menu
+                    message=menu(console)
+                elif value['action']=='relay':
+                    model=choose_relay_model()
+                    if model: save_relay(model)
+                    message='중계 모델 저장 완료.' if model else '모델 변경 취소.'
+                elif value['action']=='computer-name':
+                    message=edit_computer_name()
+                elif value['action']=='setup':
+                    model=read_json('delivery.json',{}).get('model')
+                    message=setup(['--relay-model',model] if model in ('gpt-6-luna','claude-haiku-5-5') else [])
+                elif value['action']=='refresh':
+                    message='작업 목록과 카톡 상태를 새로고침했습니다.'
+                else:
+                    from .account_menu import add,switch
+                    message=(add if value['action']=='account-add' else switch)(console,provider)
+            except (ValueError,RuntimeError,OSError,TimeoutError) as error:
+                message=str(error)
+            response(console,message)
+            if value['action']!='computer-name' and message not in ('계정 전환 취소.','계정 추가 취소.','모델 변경 취소.','연결 추가 취소.'):
+                view=show_dashboard(console,render=False)
+            view.update({'active_provider':provider,'draft_checked_codes':value.get('checked_codes',[]),
+                         'action_notice':message.splitlines()[0] if message else ''})
+            return False
+        elif isinstance(value,list):
+            from .sessions import watch_many,watched
+            previous=watched()
+            rows=watch_many(value,{'rows':view['rows'],'fetched_at':time.time()})
+            view.update({'watched':rows,'selected':selected()})
+            message=f'결과 수신 {len(rows)}개 작업 확정'
+            announce_update=not rows
+            if rows:
+                from .service import delivery_issues
+                try:
+                    issues=delivery_issues()
+                    reconnected=False
+                    unavailable=any(issue.startswith(('나와의 채팅 닫힘','카카오톡 꺼짐')) for issue in issues)
+                    if issues and not unavailable:
+                        model=read_json('delivery.json',{}).get('model')
+                        result=setup(['--relay-model',model] if model in ('gpt-6-luna','claude-haiku-5-5') else [])
+                        reconnected=True
+                        issues=delivery_issues()
+                        unavailable=(result.startswith('나와의 채팅 창이 없습니다') or
+                                     any(issue.startswith(('나와의 채팅 닫힘','카카오톡 꺼짐')) for issue in issues))
+                        if issues and not unavailable:
+                            message+=' · '+result.splitlines()[0]
+                    view['kakao_issues']=issues
+                    if unavailable:
+                        view['connection_alert']='카톡 ‘나와의 채팅’을 열어주세요'
+                        view.pop('action_notice',None)
+                        return False
+                    if not issues:
+                        message+=' · 카톡 연결됨'
+                        announce_update=not reconnected
+                        from .mouse_lock import engage
+                        if engage():
+                            message+=' · 마우스 잠금(Esc 길게=해제·out)'
+                except (ValueError,RuntimeError,OSError,TimeoutError) as error:
+                    message+=' · 연결 실패: '+str(error)
+            if announce_update:
+                from .service import selection_update
+                try:
+                    if selection_update(previous):
+                        message+=' · talkturn update 전송 확인'
+                except (ValueError,RuntimeError,OSError,TimeoutError) as error:
+                    message+=' · 변경 알림 실패: '+str(error)
+            view['action_notice']=message
+            return False
+        elif value:
+            row=pick(value)
+            view.update({'selected':row,'action_notice':f"전송 대상 선택: {row['name']}"})
+            return False
+
+    def selection_screen():
+        while accept(keyboard_pick(console,view)) is False:
+            pass
+
+    while True:
+        try:
+            selection_screen()
+            break
+        except (EOFError,KeyboardInterrupt):
+            return
+        except (ValueError,RuntimeError,OSError,TimeoutError) as error:
+            console.print(str(error),style='red',markup=False)
+    console.print('명령 입력 후 Enter · Enter만 누르면 메뉴 · K 카톡 연결 · A 계정 추가 · R 새로고침 · quit 종료',style='grey62')
+    while True:
+        try:
+            current=selected()
+            label=current['code'] if current else '전송 대상 미선택'
+            text = console.input(f'\n[bright_white]명령 ›[/bright_white] [grey62]{label}[/grey62] ').strip()
+            if not text:
+                view=show_dashboard(console,render=False)
+                selection_screen()
+                continue
+            shortcut={'a':'account-add','s':'switch','m':'relay','n':'computer-name',
+                      'k':'setup','r':'refresh'}.get(text.lower())
+            if shortcut:
+                accept({'action':shortcut,'provider':view.get('active_provider',(current or {}).get('provider','claude')),
+                        'checked_codes':[row['code'] for row in view.get('watched',[])]})
+                selection_screen()
+                continue
+            if text.isdigit() or text.upper().startswith(('C-','X-')) and ' ' not in text:
+                response(console,selection_text(pick(text)))
+                continue
+            parts=parse(text)
+            if parts in (['quit'],['exit'],['q']):
+                break
+            if parts in (['status'],['sessions']):
+                view=show_dashboard(console)
+                continue
+            if parts==['select']:
+                view=show_dashboard(console,render=False)
+                selection_screen()
+                continue
+            if len(parts)==2 and parts[0]=='select':
+                response(console,selection_text(pick(parts[1])))
+                continue
+            response(console,dispatch(parts))
+            if parts==['out']:
+                break
+        except (EOFError, KeyboardInterrupt):
+            break
+        except (ValueError, RuntimeError, OSError, TimeoutError) as error:
+            console.print(f'오류: {error}',style='red',markup=False)
+
+
+def main():
+    for stream in (sys.stdout,sys.stderr):
+        if hasattr(stream,'reconfigure'):
+            stream.reconfigure(encoding='utf-8')
+    args=sys.argv[1:]
+    try:
+        if args in (['--version'],['-V']):
+            console.print(__version__)
+        elif args in (['--help'],['-h']):
+            console.print(HELP+'\n\n터미널 전용: connect [claude|codex] / setup [--self-chat 이름] [--relay-model luna|haiku] [--computer-name 이름] [--section claude|chatgpt|all] / account-add claude|codex / start / stop / startup on|off / uninstall / codex / claude',markup=False)
+        elif not args:
+            if sys.stdin.isatty():
+                interactive()
+            else:
+                console.print(execute(['status'])+'\n\n'+HELP,markup=False)
+        else:
+            parts=[*args]
+            from .commands import ALIASES, PROVIDERS
+            parts[0]=ALIASES.get(parts[0],parts[0])
+            if parts[0] in ('tell','computer-name') and len(parts)>1:
+                parts=[parts[0],' '.join(parts[1:])]
+            if len(parts)>1 and parts[0] in ('account-add','connect','section','sessions','usage','switch','model','models','effort'):
+                parts[1]=PROVIDERS.get(parts[1].lower(),parts[1].lower())
+            console.print(dispatch(parts),markup=False)
+    except (ValueError,RuntimeError,OSError,TimeoutError) as error:
+        console.print(f'TalkTurn: {error}',style='red',markup=False)
+        raise SystemExit(1)

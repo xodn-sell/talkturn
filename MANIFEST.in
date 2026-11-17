@@ -1,0 +1,8 @@
+include README.md CONTRIBUTING.md ROADMAP.md RELEASE_NOTES.md LICENSE THIRD_PARTY_LICENSES.txt TRADEMARKS.md uv.lock
+recursive-include tests *.py *.png
+recursive-include .github *.yml
+prune src/talkturn/ui
+prune .local
+prune reply-failed
+exclude reply-log.json screen-*.png
+recursive-include brand *.json *.png

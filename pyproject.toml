@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "talkturn"
+version = "0.1.0"
+description = "작업 결과는 카톡으로, 답장은 원래 세션으로."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "THIRD_PARTY_LICENSES.txt", "TRADEMARKS.md"]
+dependencies = ["Pillow>=11,<13", "pywin32>=308; sys_platform == 'win32'", "mcp>=1.26,<3", "rich>=13,<16", "websocket-client>=1.8,<2"]
+classifiers = ["Development Status :: 3 - Alpha", "Operating System :: Microsoft :: Windows", "Programming Language :: Python :: 3"]
+
+[project.scripts]
+talkturn = "talkturn.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+talkturn = ["reply_ocr.ps1"]
+
+[tool.setuptools.exclude-package-data]
+talkturn = ["ui/*"]

@@ -1,0 +1,47 @@
+name: Windows tests and distributions
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install build tool
+        run: python -m pip install build
+      - name: Build wheel and source distribution
+        run: python -m build
+      - name: Install the built wheel
+        run: python -m pip install (Get-ChildItem dist/*.whl).FullName
+      - name: Check installed CLI and Korean image rendering
+        env:
+          TALKTURN_HOME: ${{ runner.temp }}/talkturn-smoke
+          PYTHONUTF8: '1'
+        run: |
+          talkturn --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          talkturn --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -c "from talkturn.render import text_images; from PIL import Image; paths=text_images('한글 결과 ✅', 'ci-smoke', heading='[설치 확인]'); assert paths; image=Image.open(paths[0]); assert image.width==1080 and image.height<=1500; image.close()"
+      - name: Run unit tests without provider authentication or UI
+        env:
+          TALKTURN_HOME: ${{ runner.temp }}/talkturn-tests
+          CODEX_HOME: ${{ runner.temp }}/talkturn-tests/codex
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/talkturn-tests/claude
+          PYTHONUTF8: '1'
+        run: python -m unittest discover -s tests -v
