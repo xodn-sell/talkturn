@@ -1,6 +1,6 @@
-# TalkTurn 0.1.0 알파 릴리스 노트 초안
+# TalkTurn 0.1.0 Windows 알파 릴리스 노트
 
-상태: 비공개 GitHub 저장소에 소스를 올리고 Windows CI와 macOS 공통 기능 CI를 확인했습니다. 공개 릴리스와 PyPI 게시는 아직 하지 않았으며 출시일은 확정하지 않았습니다. 카카오톡 연동은 Windows 전용이며 아래 macOS 결과는 공통 기능의 호환성 검증입니다.
+2026-11-17 Windows 개발자용 알파로 공개합니다. Windows CI와 macOS 공통 기능 CI를 확인했으며 같은 버전의 wheel과 소스를 제공합니다. PyPI에는 아직 게시하지 않았습니다. **실제 카톡 왕복과 다른 사용자 PC의 앱 연동은 검증을 마치지 않았습니다. Mac 카카오톡 연동은 준비 중으로 이번 알파에 포함되지 않으며**, 아래 macOS 결과는 공통 기능의 호환성 검증입니다.
 
 TalkTurn은 Windows 개발자가 Claude Code·Codex·Antigravity CLI의 작업 결과를 카카오톡 나와의 채팅에서 보고, 답장으로 기존 작업을 이어가는 터미널 도구입니다. Kakao 공식 제품이 아닙니다.
 
@@ -45,7 +45,7 @@ TalkTurn은 Windows 개발자가 Claude Code·Codex·Antigravity CLI의 작업 �
 | GitHub Actions의 새 macOS 환경 | [실행 44034756881](https://github.com/xodn-sell/talkturn/actions/runs/44034756881) 성공. `00b549b`에서 빌드·wheel 설치·CLI·한글 이미지·공통 시험 확인 |
 | 실제 다른 Windows PC의 신규 설치 | 카카오톡·OCR·CLI를 포함한 동작은 아직 확인하지 않음 |
 
-GitHub Actions에서 새 Windows와 macOS 환경의 설치·공통 기능을 확인했습니다. 두 CI 커밋은 실행 코드·테스트가 같고 macOS 워크플로 설정만 다릅니다. Mac은 명시적으로 고른 공통 시험 집합만 실행했으며 실제 카카오 UI·OCR·provider 계정에는 접근하지 않았습니다. 현재 저장소가 비공개이므로 CI 링크에는 접근 권한이 필요합니다. 실제 사용자 PC의 카톡 왕복과 계정 연동은 별도 확인이 필요합니다. 앱·에디터의 모든 세션 수신, 한국어 외 카카오 내보내기 형식은 지원을 보장하지 않습니다. Claude MCP의 비정형·빈 성공 응답은 실제 CLI 버전별 접수 증거를 추가 확인해야 합니다.
+GitHub Actions에서 새 Windows와 macOS 환경의 설치·공통 기능을 확인했습니다. 두 CI 커밋은 실행 코드·테스트가 같고 macOS 워크플로 설정만 다릅니다. Mac은 명시적으로 고른 공통 시험 집합만 실행했으며 실제 카카오 UI·OCR·provider 계정에는 접근하지 않았습니다. 실제 사용자 PC의 카톡 왕복과 계정 연동은 별도 확인이 필요합니다. 앱·에디터의 모든 세션 수신, 한국어 외 카카오 내보내기 형식은 지원을 보장하지 않습니다. Claude MCP의 비정형·빈 성공 응답은 실제 CLI 버전별 접수 증거를 추가 확인해야 합니다.
 
 ## 설치 전 알아둘 점
 
@@ -58,4 +58,4 @@ GitHub Actions에서 새 Windows와 macOS 환경의 설치·공통 기능을 확
 - macOS 공통 기능 검사에서는 `TALKTURN_FONT=/System/Library/Fonts/AppleSDGothicNeo.ttc`를 직접 지정했습니다. macOS의 글꼴 자동 탐색이나 모든 이모지 표시를 보장하지 않습니다.
 - 카톡에 새로 올린 이미지·파일의 AI 전달, macOS·Linux의 카카오톡 연동, 자동 업데이트는 이번 알파에 포함되지 않습니다. 이미지의 URL·코드를 복사해야 할 때는 `talkturn display text`를 사용합니다.
 
-설치와 복구 명령은 [README](README.md), 남은 작업은 [ROADMAP](ROADMAP.md)을 참고하세요. 공개 시 같은 버전의 wheel과 소스 아카이브를 [예정 Releases](https://github.com/xodn-sell/talkturn/releases)에 함께 제공할 계획입니다. 라이선스는 [AGPL-3.0-only](LICENSE)입니다.
+설치와 복구 명령은 [README](README.md), 남은 작업은 [ROADMAP](ROADMAP.md)을 참고하세요. 같은 버전의 wheel과 소스 아카이브, SHA-256 체크섬은 [v0.1.0 릴리스](https://github.com/xodn-sell/talkturn/releases/tag/v0.1.0)에서 제공합니다. 라이선스는 [AGPL-3.0-only](LICENSE)입니다.

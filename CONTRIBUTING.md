@@ -1,6 +1,6 @@
 # 기여와 공개 원칙
 
-TalkTurn 소스는 AGPL-3.0-only로 준비합니다. 복제·수정·상업적 이용을 허용하며 해당 라이선스의 소스 제공 의무가 적용됩니다. 경쟁 포크나 광고를 제거한 포크도 일률적으로 금지하지 않습니다. 저작권 고지·라이선스는 유지해야 합니다.
+TalkTurn 소스는 AGPL-3.0-only로 배포합니다. 복제·수정·상업적 이용을 허용하며 해당 라이선스의 소스 제공 의무가 적용됩니다. 경쟁 포크나 광고를 제거한 포크도 일률적으로 금지하지 않습니다. 저작권 고지·라이선스는 유지해야 합니다.
 
 수정본을 배포할 때는 변경 사실을 표시하고 AGPL에 맞게 대응 소스를 제공합니다. 수정한 프로그램을 네트워크로 사용자와 상호작용하게 제공하면 제13조에 따라 해당 사용자에게 대응 소스를 받을 기회를 제공해야 합니다. 개인적으로 수정했다는 이유만으로 모든 변경을 인터넷에 공개해야 하는 것은 아닙니다. 구체적인 조건은 [LICENSE](LICENSE)와 [AGPL 원문](https://opensource.org/license/agpl-3.0)을 따릅니다.
 
@@ -12,7 +12,7 @@ PR에는 변경 목적·영향·직접 관련 검증을 적습니다. 개인 채
 
 버그 제보에는 Windows·Python·카카오톡 PC·해당 CLI의 버전, 문제가 생긴 단계, 재현 순서, 기대 결과와 실제 결과를 적어 주세요. 개인 대화 대신 짧은 테스트 문구를 사용하고 계정 이름·세션 UUID·로컬 경로는 지워 주세요. `reply-log.json`을 참고한다면 필요한 `stage`·`gate`만 옮기고, 로그 전체·인증 파일·실패 캡처를 그대로 첨부하지 않습니다. 전송 성공 여부가 불분명하면 먼저 카톡과 원래 세션의 접수를 확인하고 같은 요청을 반복하지 마세요.
 
-저장소는 [xodn-sell/talkturn](https://github.com/xodn-sell/talkturn)이며 현재 비공개 상태로 소스 업로드, Windows CI와 macOS 공통 기능 CI 검증을 마쳤습니다. 알파 공개 후 [Releases](https://github.com/xodn-sell/talkturn/releases)에서 wheel과 같은 버전의 소스 아카이브를 함께 제공합니다.
+저장소는 [xodn-sell/talkturn](https://github.com/xodn-sell/talkturn)이며 Windows 개발자용 알파로 공개합니다. [Releases](https://github.com/xodn-sell/talkturn/releases)에서 wheel과 같은 버전의 소스 아카이브를 함께 제공합니다. Windows CI와 macOS 공통 기능 CI 검증을 마쳤지만 실제 카톡 왕복 검증은 남아 있습니다. Mac 카카오톡 연동은 준비 중이며 현재 지원하지 않습니다.
 
 Windows의 Python 3.11·3.13에서 `python -m unittest discover -s tests -v`와 `python -m build`로 검증합니다. CI는 모의 provider와 임시 상태를 사용하며 로그인·카카오 UI 조작·메시지 전송을 실행하지 않습니다. 실제 수신 검증 결과는 단위 테스트 결과와 구분해 적습니다.
 
@@ -20,7 +20,7 @@ Windows의 Python 3.11·3.13에서 `python -m unittest discover -s tests -v`와 
 
 macOS 공통 기능 변경 전에는 AGY 통합 후 224개 테스트가 있었고, 공통 기능 검사 7개를 추가해 최신 전체 시험 집합은 231개입니다. Mac에서는 Windows UI·키보드·글꼴 의존 시험을 제외한 범위만 실행합니다. 전체 목록은 [macOS 워크플로](.github/workflows/macos.yml)를 따르며, 플랫폼 전용 건너뛰기를 숨기거나 Mac 전체 지원으로 기록하지 않습니다. 같은 시험을 여러 환경에서 실행한 횟수를 서로 다른 테스트 수로 합산하지 않습니다.
 
-Mac 렌더 검사는 `TALKTURN_FONT=/System/Library/Fonts/AppleSDGothicNeo.ttc`를 직접 지정한 [설치본 smoke](tests/macos_smoke.py)로 수행합니다. 한글 글리프·이미지 크기를 확인한 범위이며 글꼴 자동 탐색·모든 이모지 표시 보장은 아닙니다. `setup`이 Windows 필요 안내로 거절되는지도 확인합니다. macOS의 카카오톡 자동화·OCR은 지원하지 않으며 실제 provider 로그인 연동은 미검증입니다. 실제 카톡 왕복과 다른 사용자 PC의 앱 연동 검증은 계속 별도 항목입니다. 비공개 저장소의 CI 링크에는 접근 권한이 필요합니다.
+Mac 렌더 검사는 `TALKTURN_FONT=/System/Library/Fonts/AppleSDGothicNeo.ttc`를 직접 지정한 [설치본 smoke](tests/macos_smoke.py)로 수행합니다. 한글 글리프·이미지 크기를 확인한 범위이며 글꼴 자동 탐색·모든 이모지 표시 보장은 아닙니다. `setup`이 Windows 필요 안내로 거절되는지도 확인합니다. macOS의 카카오톡 자동화·OCR은 지원하지 않으며 실제 provider 로그인 연동은 미검증입니다. 실제 카톡 왕복과 다른 사용자 PC의 앱 연동 검증은 계속 별도 항목입니다.
 
 AGY 변경은 ACP 목록 메타데이터 조회와 동일 세션 ID·작업 경로 재개를 구분해 검증합니다. 저장 대화를 실행 중이라고 표시하거나 원래 터미널에 직접 연결한 것으로 기록하지 않습니다. 원격 permission 취소·추가 질문 미지원·접수 불명 시 재전송 금지·기존 사용자 훅 보존도 확인합니다. 완료 훅의 transcript 시험은 합성 기록으로 작성하고 실제 대화나 계정 정보를 fixture에 넣지 않습니다.
 

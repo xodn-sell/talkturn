@@ -26,9 +26,9 @@ Windows용 터미널 CLI. Claude Code·Codex·Antigravity CLI(`agy`)의 작업 �
 
 **새 CI 환경의 설치·공통 기능을 확인했습니다.** [Windows 실행](https://github.com/xodn-sell/talkturn/actions/runs/44034353934)과 [macOS 실행](https://github.com/xodn-sell/talkturn/actions/runs/44034756881)에서 빌드, wheel 설치, CLI·한글 이미지와 각 플랫폼의 시험 범위를 확인했습니다. **카카오톡 전송·수신은 계속 Windows 전용**입니다. [macOS 검증 범위와 글꼴 설정](#macos-공통-기능-검증)을 별도로 확인하세요.
 
-[설치](#설치) · [Antigravity 연결](#antigravity-cli-연결) · [문제 해결](#문제-해결) · [릴리스 노트 초안](RELEASE_NOTES.md)
+[설치](#설치) · [Antigravity 연결](#antigravity-cli-연결) · [문제 해결](#문제-해결) · [릴리스 노트](RELEASE_NOTES.md)
 
-저장소: [xodn-sell/talkturn](https://github.com/xodn-sell/talkturn). 현재 비공개 저장소에 소스를 올려 알파 공개를 준비하고 있으며 PyPI에는 아직 게시하지 않았습니다. 저장소와 CI 링크는 접근 권한이 있어야 열 수 있습니다. 공개 후 같은 버전의 wheel과 소스 아카이브를 [Releases](https://github.com/xodn-sell/talkturn/releases)에 함께 제공할 예정입니다.
+저장소: [xodn-sell/talkturn](https://github.com/xodn-sell/talkturn). **Windows 개발자용 알파**로 공개하며 같은 버전의 wheel과 소스 아카이브를 [v0.1.0 릴리스](https://github.com/xodn-sell/talkturn/releases/tag/v0.1.0)에서 제공합니다. PyPI에는 아직 게시하지 않았습니다. **Mac 카카오톡 연동은 준비 중이며 이번 알파에는 포함되지 않습니다.**
 
 ## 결과와 답장
 
@@ -68,7 +68,7 @@ uv tool install .
 talkturn
 ```
 
-배포받은 wheel로 설치:
+[v0.1.0 릴리스](https://github.com/xodn-sell/talkturn/releases/tag/v0.1.0)에서 `talkturn-0.1.0-py3-none-any.whl`을 내려받은 폴더에서 설치:
 
 ```powershell
 uv tool install .\talkturn-0.1.0-py3-none-any.whl
@@ -77,7 +77,7 @@ talkturn
 
 `talkturn`을 찾지 못하면 `uv tool update-shell` 후 터미널을 다시 엽니다. `pip install .`도 가능합니다. 공개 패키지 등록 전에는 `pip install talkturn`으로 설치하지 마세요.
 
-자동 업데이트는 아직 구현하지 않았습니다. 현재는 전달받은 새 패키지를 수동으로 재설치합니다.
+자동 업데이트는 아직 구현하지 않았습니다. 새 버전은 [Releases](https://github.com/xodn-sell/talkturn/releases)에서 내려받아 수동으로 재설치합니다.
 
 1. 카카오톡에서 본인의 **나와의 채팅**을 별도 창으로 엽니다.
 2. TalkTurn은 Claude Code·Codex·AGY 목록을 별도 탭으로 보여줍니다. AGY 탭은 저장된 대화 목록입니다. 방향키 이동 → Space 체크 → Enter 확정으로 선택하거나 번호/코드를 입력합니다. Esc로 건너뛴 뒤 `setup`을 실행해 해당 채팅 창을 선택합니다.
