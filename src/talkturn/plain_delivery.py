@@ -198,7 +198,7 @@ def call_haiku(prompt: str, schema: dict, images: list[str] | None = None) -> di
 
 
 def _reply_identity(origin):
-    if origin and origin.get('source') in {'codex','claude'}:
+    if origin and origin.get('source') in {'codex','claude','agy'}:
         if origin.get('session_id'):
             return origin['source'],'session',origin['session_id']
         if origin['source']=='claude' and origin.get('target_kind')=='claude_peer' and origin.get('peer_ref'):

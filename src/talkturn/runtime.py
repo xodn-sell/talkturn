@@ -48,11 +48,18 @@ def atomic_write(path, text):
 def executable(provider):
     # Intentional legacy alias for existing private executable overrides.
     override = os.environ.get('TALKTURN_' + provider.upper() + '_BIN') or os.environ.get('TOKTURN_' + provider.upper() + '_BIN')
+    if provider=='agy' and override:
+        path=Path(override)
+        if not path.is_file() or path.suffix.lower()!='.exe':
+            raise RuntimeError('TALKTURN_AGY_BIN은 설치된 agy.exe 경로여야 합니다.')
+        return str(path)
     candidates = [Path(override)] if override else []
     found = shutil.which(provider + '.exe') or shutil.which(provider)
     if found:
         candidates.append(Path(found))
     candidates.append(Path.home() / '.local/bin' / (provider + '.exe'))
+    if provider == 'agy':
+        candidates.append(Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local')) / 'agy/bin/agy.exe')
     # npm's cmd/PowerShell shims must never receive chat text through a shell.
     npm_roots = [Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming')) / 'npm/node_modules']
     if found:

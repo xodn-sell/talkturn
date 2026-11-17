@@ -11,24 +11,27 @@ ALIASES = {'도움말':'help','도움':'help','상태':'status','연결':'ping',
            '표시':'display','중계':'router','전달':'send','섹션':'sessions','세션':'sessions',
            '선택':'select','해제':'unselect','체크':'watch','보내':'tell','메시지':'tell','한도알림':'quota-alert','유지':'keep',
            '계정추가':'account-add','계정전환':'switch','계정추가하기':'account-add','계정전환하기':'switch',
-           '컴퓨터이름':'computer-name','화면':'screen','스샷':'screen','스크린샷':'screen','screenshot':'screen'}
+           '컴퓨터이름':'computer-name','화면':'screen','스샷':'screen','스크린샷':'screen','screenshot':'screen',
+           'agy':'agy','antigravity':'agy','안티그래비티':'agy'}
 PROVIDERS = {'클코':'claude','클로드':'claude','코덱스':'codex','chatgpt':'codex',
-             'gpt':'codex','챗지피티':'codex','챗gpt':'codex','중계':'relay','전부':'all','전체':'all'}
-SECTION_LABELS = {'claude':'Claude Code','codex':'ChatGPT · Codex','all':'전체'}
-SECTION_MENU = '1 Claude Code  ·  2 ChatGPT (Codex)  ·  3 전체'
+             'gpt':'codex','챗지피티':'codex','챗gpt':'codex','중계':'relay','전부':'all','전체':'all',
+             'agy':'agy','antigravity':'agy','안티그래비티':'agy'}
+SECTION_LABELS = {'claude':'Claude Code','codex':'ChatGPT · Codex','agy':'AGY · Antigravity','all':'전체'}
+SECTION_MENU = '1 Claude Code  ·  2 ChatGPT (Codex)  ·  3 전체  ·  4 AGY (Antigravity)'
+AGY_ACCOUNT_NOTICE = 'AGY 계정 추가·전환은 TalkTurn에서 지원하지 않습니다. agy에서 직접 관리해 주세요.'
 HELP = '''TalkTurn 명령
 카톡: 'talkturn in' 말풍선에 답장하면 명령만 쓰면 됨. 예: help, 세션, 화면, out
-세션  → Claude Code / Codex의 실제 작업 목록
+세션  → Claude Code / Codex / AGY의 실제 작업 목록
 화면  → 지금 PC 화면 스샷 (모니터마다 1장)
-선택 C-… 또는 X-…  → 기존 세션 선택
-체크 C-… X-…  → 여러 작업의 결과 수신 (체크 none: 모두 해제)
+선택 C-… / X-… / G-…  → 기존 세션 선택
+체크 C-… X-… G-…  → 여러 작업의 결과 수신 (체크 none: 모두 해제)
 보내 내용  → 선택한 원래 세션에 전달
 해제 / 세션 recent
-상태 / 연결 / 사용량 [claude|codex] / 계정
+상태 / 연결 / 사용량 [claude|codex|agy] / 계정
 컴퓨터이름 [이름]  → 현재 PC의 TalkTurn 표시 이름
 전환 claude 2  → 등록된 2번 계정
 모델  → 현재 기본값
-모델목록 codex|claude|relay
+모델목록 codex|claude|agy|relay
 모델 claude claude-opus-5-5
 모델 codex gpt-6-astra
 모델 relay gpt-6-luna
@@ -45,7 +48,7 @@ out  → 연결 끊기 (마우스 잠금도 풀림)
 # The phone gets only what is done from a phone; the full list is one screen too long there.
 PHONE_HELP = '''TalkTurn · 'talkturn in'에 답장으로 쓰는 명령
 세션  → 연결할 수 있는 세션 보기
-체크 C-… X-…  → 받을 세션 바꾸기
+체크 C-… X-… G-…  → 받을 세션 바꾸기
 화면  → PC 화면 스샷
 사용량  → 남은 한도
 out  → 연결 끊기
@@ -61,9 +64,9 @@ def selected_section():
 
 def select_section(value):
     value=value.lower()
-    value={'1':'claude','2':'codex','3':'all'}.get(value,PROVIDERS.get(value,value))
+    value={'1':'claude','2':'codex','3':'all','4':'agy'}.get(value,PROVIDERS.get(value,value))
     if value not in SECTION_LABELS:
-        raise ValueError('섹션 선택: claude, chatgpt 또는 all')
+        raise ValueError('섹션 선택: claude, chatgpt, agy 또는 all')
     with locked('view.lock'):
         data=read_json('ui.json',{})
         data['section']=value
@@ -84,14 +87,14 @@ def parse(text, *, remote=False):
     parts = value.split()
     if not parts:
         return ['help']
-    parts[0] = ALIASES.get(parts[0], parts[0].lower())
+    parts[0] = ALIASES.get(parts[0].lower(), parts[0].lower())
     if parts[0] in ('tell','computer-name'):
         original=value.split(maxsplit=1)
         return [parts[0],*original[1:]]
     if parts[0] in ('answer','send'):
         original=value.split(maxsplit=2)
         return [parts[0],*original[1:]]
-    if len(parts) > 1 and parts[0] in ('connect','section','sessions','usage','switch','model','models','effort'):
+    if len(parts) > 1 and parts[0] in ('account-add','connect','section','sessions','usage','switch','model','models','effort'):
         parts[1] = PROVIDERS.get(parts[1].lower(), parts[1].lower())
     return parts
 
@@ -142,7 +145,7 @@ def usage_text(data):
                 pct = limit.get('remaining_pct')
                 rest = f'{pct:g}%' if pct is not None else '미제공'
                 lines.append(f"  {limit['name']} 잔여 {rest} · 초기화 {providers.reset_time(limit.get('resets_at'))}")
-        if provider == 'codex':
+        if provider in ('codex','agy'):
             if not block.get('limits'):
                 lines.append('한도 미제공')
     lines.append('\n잔여율은 서비스 한도 기준. 정확한 남은 토큰 수는 미제공.')
@@ -154,6 +157,8 @@ def execute(parts, *, remote=False):
         return HELP
     command, *args = parts
     section=selected_section()
+    if command in ('account-add','switch') and args and args[0]=='agy':
+        raise ValueError(AGY_ACCOUNT_NOTICE)
     if command=='computer-name' and len(args)<=1:
         from .computer import computer_label,set_computer_name
         if args:
@@ -179,9 +184,11 @@ def execute(parts, *, remote=False):
         return '한도 소진 시 전환 질문: '+('켜짐' if enabled else '꺼짐')+'\n5분 간격 확인. 자동 계정 전환 없음.'
     if command=='keep' and not args:
         return '현재 계정 유지. 같은 한도 소진 알림은 반복하지 않음.'
-    if command == 'usage' and len(args) <= 1 and (not args or args[0] in ('all','claude','codex')):
+    if command == 'usage' and len(args) <= 1 and (not args or args[0] in ('all','claude','codex','agy')):
         return usage_text(providers.usage(args[0] if args else section))
     if command == 'accounts' and not args:
+        if section=='agy':
+            return AGY_ACCOUNT_NOTICE
         data = providers.accounts()
         if section!='all':
             data={section:data.get(section,[])}
@@ -191,7 +198,7 @@ def execute(parts, *, remote=False):
         return f"{data['provider']} 계정 {data['account']} 활성 확인.\n{data['scope']}"
     if command in ('model', 'settings') and not args:
         data = providers.model_settings()
-        keys=('codex','claude','relay') if section=='all' else (section,'relay')
+        keys=('codex','claude','agy','relay') if section=='all' else (section,'relay')
         return '\n'.join([f'{SECTION_LABELS[section]} · 모델 설정'] + [f"{SECTION_LABELS.get(key,'공통 중계')}: {data[key]['model']}" + (f" · 노력도 {data[key]['effort']}" if 'effort' in data[key] else '') for key in keys] + [data['scope']])
     if command=='models' and not args and section!='all':
         args=[section]
@@ -201,12 +208,12 @@ def execute(parts, *, remote=False):
         return providers.set_model(*args)
     if command == 'effort' and len(args) == 2:
         return providers.set_effort(*args)
-    if command=='sessions' and len(args)<=1 and (not args or args[0] in ('all','claude','codex','recent','최근')):
+    if command=='sessions' and len(args)<=1 and (not args or args[0] in ('all','claude','codex','agy','recent','최근')):
         from .sessions import discover,list_text,phone_text
         if remote and not args:
             return phone_text(discover())
         recent=bool(args and args[0] in ('recent','최근'))
-        provider=args[0] if args and args[0] in ('claude','codex') else 'all'
+        provider=args[0] if args and args[0] in ('claude','codex','agy') else 'all'
         return list_text(discover(recent=recent),provider)
     if command=='watch':
         from .sessions import identity,watched,watch_many,watch_text

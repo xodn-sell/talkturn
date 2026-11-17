@@ -4,5 +4,6 @@ recursive-include .github *.yml
 prune src/talkturn/ui
 prune .local
 prune reply-failed
-exclude reply-log.json screen-*.png
+prune agy
+exclude reply-log.json screen-*.png installed-agy-hooks.json agy-*.lock
 recursive-include brand *.json *.png

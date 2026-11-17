@@ -43,5 +43,6 @@ jobs:
           TALKTURN_HOME: ${{ runner.temp }}/talkturn-tests
           CODEX_HOME: ${{ runner.temp }}/talkturn-tests/codex
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/talkturn-tests/claude
+          TALKTURN_AGY_BIN: ${{ runner.temp }}/talkturn-tests/missing-agy.exe
           PYTHONUTF8: '1'
         run: python -m unittest discover -s tests -v

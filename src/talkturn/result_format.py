@@ -16,7 +16,7 @@ def _title(value):
 
 def session_heading(origin):
     """Return one display line; never mutate the origin's routing identity."""
-    if not isinstance(origin, dict) or origin.get('source') not in ('codex', 'claude'):
+    if not isinstance(origin, dict) or origin.get('source') not in ('codex', 'claude', 'agy'):
         return ''
     session_id = origin.get('session_id')
     if not isinstance(session_id, str) or not session_id.strip():

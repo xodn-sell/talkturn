@@ -7,7 +7,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.segment import Segment
-from .commands import SECTION_LABELS, selected_section
+from .commands import SECTION_LABELS, selected_section, AGY_ACCOUNT_NOTICE
 from .providers import reset_time
 from .runtime import read_json
 import os
@@ -16,6 +16,7 @@ import time
 
 ACCENT='bright_white'
 PAGE_SIZE=10
+PROVIDER_TABS=(('claude','Claude Code'),('codex','Codex'),('agy','AGY'))
 
 
 def _read_key(console,keyboard,rendered_size):
@@ -196,8 +197,8 @@ def dashboard(console,view,*,render_only=False,max_rows=None):
     current=view.get('selected')
     active=view.get('active_provider') or (current or {}).get('provider') or (view['rows'][0]['provider'] if view['rows'] else 'claude')
     tabs=Text(no_wrap=True,overflow='ellipsis')
-    for provider,label in (('claude','Claude Code'),('codex','Codex')):
-        caption=f'← {label}' if provider=='claude' else f'{label} →'
+    for tab_index,(provider,label) in enumerate(PROVIDER_TABS):
+        caption=('← ' if tab_index==0 else '')+label+(' →' if tab_index==len(PROVIDER_TABS)-1 else '')
         if tabs:
             tabs.append(' · ',style='grey50')
         tabs.append(caption,style='bold bright_white' if provider==active else 'grey70')
@@ -404,6 +405,8 @@ def keyboard_pick(console,view):
                         paint()
                 continue
             if key.lower() in ('s','a','m','n','k','r') and not typed:
+                if active=='agy' and key.lower() in ('s','a'):
+                    notice=AGY_ACCOUNT_NOTICE; paint(); continue
                 notice=key.upper()+' · '+{'s':'계정 전환','a':'계정 추가','m':'중계 모델','n':'컴퓨터 이름 수정','k':'카톡 연결','r':'작업 목록 새로고침'}[key.lower()]; paint()
                 return {'action':{'s':'switch','a':'account-add','m':'relay','n':'computer-name','k':'setup','r':'refresh'}[key.lower()],
                         'provider':active,'checked_codes':sorted(checked)}
@@ -420,12 +423,14 @@ def keyboard_pick(console,view):
                 position=group.index(index) if index in group else 0
                 positions[active]=index
                 if key in ('left','right'):
-                    active='claude' if key=='left' else 'codex'
+                    providers=[provider for provider,_ in PROVIDER_TABS]
+                    active=providers[(providers.index(active)+(1 if key=='right' else -1))%len(providers)]
                     group=[i for i in available if view['rows'][i]['provider']==active]
                     index=positions.get(active,group[min(position,len(group)-1)] if group else None)
                 elif group:
                     index=group[(position+(1 if key=='down' else -1))%len(group)]
-                notice={'up':'↑ · 이전 작업','down':'↓ · 다음 작업','left':'← · Claude Code','right':'→ · Codex'}[key]
+                notice=({'up':'↑ · 이전 작업','down':'↓ · 다음 작업'}[key] if key in ('up','down') else
+                        ('←' if key=='left' else '→')+' · '+dict(PROVIDER_TABS)[active])
                 paint()
             elif key in ('\r','\n'):
                 value=typed.strip().upper()

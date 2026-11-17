@@ -25,6 +25,7 @@ dist/
 /native-delivered.json
 /native-status.json
 /installed-hooks.json
+/installed-agy-hooks.json
 /previous-notify.json
 /hook-status.json
 /question-status.json
@@ -61,6 +62,8 @@ dist/
 /sent-images/
 /reply-crops/
 /reply-failed/
+/agy/
+/agy-*.lock
 
 # Authentication and private-key artifacts, not general JSON fixtures.
 auth.json

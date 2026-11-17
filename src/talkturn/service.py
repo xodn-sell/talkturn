@@ -176,7 +176,7 @@ def _connection_sessions():
     selected = []
     seen = set()
     for item in watched():
-        if not isinstance(item, dict) or item.get('provider') not in ('claude', 'codex'):
+        if not isinstance(item, dict) or item.get('provider') not in ('claude', 'codex', 'agy'):
             continue
         target = item.get('peer_ref') if item.get('target_kind') == 'claude_peer' else item.get('session_id')
         if not isinstance(target, str) or not target.strip():
@@ -196,7 +196,10 @@ def connection_message(*, update=False):
     from .result_format import session_heading
     selected = _connection_sessions()
     lines = ['talkturn update' if update else 'talkturn in', computer_label()]
-    for provider, label in (('claude', 'Claude Code'), ('codex', 'Codex')):
+    groups=[('claude', 'Claude Code'), ('codex', 'Codex')]
+    if any(key[0]=='agy' for key,row in selected):
+        groups.append(('agy','Antigravity'))
+    for provider, label in groups:
         group = [(key, row) for key, row in selected if key[0] == provider]
         lines.extend(['', f'{label} · 결과 수신 선택 {len(group)}개'])
         if not group:
@@ -208,7 +211,7 @@ def connection_message(*, update=False):
             if row.get('reachable') is False and state not in ('앱 연결 대기', '수신 연결 없음', '이름 중복'):
                 state = '수신 연결 없음'
             elif state not in ('앱 연결 대기', '수신 연결 없음', '이름 중복', '실행 상태 미확인',
-                             '저장됨', '오류', '상태 미확인'):
+                             '저장됨', '오류', '상태 미확인', '재개 가능'):
                 state = '실행 상태 미확인' if row.get('live') is False else ''
             lines.append('- ' + heading + (' · ' + state if state else ''))
     return '\n'.join(lines)
@@ -232,11 +235,11 @@ def _send_connection_batch(*, update=False, connection_at):
         cards.append((key,heading,origin))
         titles[heading]=titles.get(heading,0)+1
     # One header bubble: separate provider-label bubbles were only scroll on a phone.
-    counts=' · '.join(f'{label} {total}' for provider,label in (('claude','Claude Code'),('codex','Codex'))
+    counts=' · '.join(f'{label} {total}' for provider,label in (('claude','Claude Code'),('codex','Codex'),('agy','Antigravity'))
                       if (total:=sum(card[0][0]==provider for card in cards)))
     messages=[('\n'.join(['talkturn update' if update else 'talkturn in',computer_label(),
                           counts or '연결된 세션 없음','답장: help · 세션 · out']),None)]
-    for provider in ('claude','codex'):
+    for provider in ('claude','codex','agy'):
         for key,heading,origin in cards:
             if key[0]==provider:
                 messages.append((heading+(' · '+code(*key) if titles[heading]>1 else ''),origin))
@@ -491,6 +494,12 @@ def disconnect():
 def uninstall():
     stop()
     startup(False)
+    from .agy_hooks import uninstall as uninstall_agy
+    agy_warning = ''
+    try:
+        uninstall_agy()
+    except (OSError, ValueError):
+        agy_warning = '\nAGY 훅은 변경되었거나 읽을 수 없어 보존했습니다. AGY hooks.json에서 직접 확인해 주세요.'
     with locked('settings.lock'):
         path = config_path('claude')
         data = provider_config('claude')
@@ -511,7 +520,7 @@ def uninstall():
                 data['hooks'][event]=[{**group,'hooks':[hook for hook in group.get('hooks',[]) if not owned_hook(hook)]} for group in groups]
                 data['hooks'][event]=[group for group in data['hooks'][event] if group['hooks']]
             atomic_write(hooks,json.dumps(data,ensure_ascii=False,indent=2)+'\n')
-    return 'TalkTurn 훅·자동 시작 제거됨. 개인 설정과 기록은 보존됨.'
+    return 'TalkTurn 훅·자동 시작 제거됨. 개인 설정과 기록은 보존됨.' + agy_warning
 
 
 def migrate_legacy():

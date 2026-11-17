@@ -237,6 +237,9 @@ def forward(origin, text, *, quoted_request_id=None):
         answer(origin['request_id'],text)
         return {'provider':origin['source'],'request_id':origin['request_id'],'accepted':True}
     session_id = origin.get('session_id')
+    if origin['source']=='agy':
+        from .agy_transport import forward as forward_agy
+        return forward_agy(origin, text)
     if origin['source']=='codex':
         if not session_id:
             raise ValueError('Original Codex session identity is unavailable')

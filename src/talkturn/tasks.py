@@ -67,7 +67,7 @@ def status_text(provider='all'):
     if view['waiting']:
         lines.append('대기 질문: '+', '.join(request['id'] for request in view['waiting']))
     settings=view['models']
-    keys=('codex','claude') if provider=='all' else (provider,)
-    lines.append('\n새 작업 기본 모델: '+' / '.join(f"{SECTION_LABELS[key]} {settings[key]['model']}" for key in keys))
+    keys=('codex','claude','agy') if provider=='all' else (provider,)
+    lines.append('\n작업 기본 모델: '+' / '.join(f"{SECTION_LABELS[key]} {settings.get(key,{}).get('model','provider default')}" for key in keys))
     lines.append('\n'+usage_text(view['usage']))
     return '\n'.join(lines)

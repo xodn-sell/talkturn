@@ -15,7 +15,7 @@ from .runtime import executable,module_command,run_json,read_json,write_json,loc
 
 def code(provider,session_id):
     digest=hashlib.sha256(f'{provider}:{session_id}'.encode()).hexdigest()[:8].upper()
-    return ('C-' if provider=='claude' else 'X-')+digest
+    return {'claude':'C-', 'codex':'X-', 'agy':'G-'}[provider]+digest
 
 
 def identity(row):
@@ -267,10 +267,15 @@ def claude_sessions(recent=False):
     return refresh_claude_titles(result),note
 
 
+def agy_sessions(recent=False):
+    from .agy_transport import sessions as listing
+    return listing(recent)
+
+
 def discover(recent=False):
     rows=[]; errors={}
-    jobs={'claude':claude_sessions,'codex':codex_sessions}
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    jobs={'claude':claude_sessions,'codex':codex_sessions,'agy':agy_sessions}
+    with ThreadPoolExecutor(max_workers=3) as pool:
         futures={provider:pool.submit(fn,recent) for provider,fn in jobs.items()}
         for provider,future in futures.items():
             try:
@@ -287,7 +292,7 @@ def discover(recent=False):
             row['model']=last.get((row['provider'],row['session_id']),{}).get('model')
             row['model_source']='hook_reported' if row['model'] else None
     priority={'진행 중':0,'승인 대기':1,'질문 대기':1,'입력 대기':1,'대기':2}
-    rows.sort(key=lambda row:(0 if row['provider']=='claude' else 1,priority.get(row['state'],3),-row['updated_at'],row['code']))
+    rows.sort(key=lambda row:({'claude':0,'codex':1,'agy':2}[row['provider']],priority.get(row['state'],3),-row['updated_at'],row['code']))
     catalog={'rows':rows,'errors':errors,'fetched_at':time.time(),'recent':recent}
     write_json('session-catalog.json',catalog)
     return catalog
@@ -295,7 +300,7 @@ def discover(recent=False):
 
 def selected():
     item=read_json('ui.json',{}).get('selected_session')
-    return item if isinstance(item,dict) and item.get('provider') in ('claude','codex') and (item.get('session_id') or item.get('target_kind')=='claude_peer' and item.get('peer_ref')) else None
+    return item if isinstance(item,dict) and item.get('provider') in ('claude','codex','agy') and (item.get('session_id') or item.get('target_kind')=='claude_peer' and item.get('peer_ref')) else None
 
 
 def watched():
@@ -342,6 +347,9 @@ def watch_text(rows=None):
 
 
 def validate_target(row):
+    if row.get('provider')=='agy':
+        from .agy_transport import validate
+        return validate(row)
     if row.get('target_kind')=='claude_peer' and row.get('provider')=='claude':
         peers=claude_targets().get('targets',[])
         matches=[peer for peer in peers if peer.get('ref')==row.get('peer_ref')]
@@ -374,7 +382,7 @@ def choose(selector,catalog=None):
     selector=selector.strip().upper()
     matches=[row for row in catalog['rows'] if row['code']==selector or row.get('session_id') and row['session_id'].upper()==selector]
     if len(matches)!=1:
-        raise ValueError('세션 코드가 없거나 모호함. sessions로 확인 후 C-… 또는 X-… 코드를 선택해 주세요.')
+        raise ValueError('세션 코드가 없거나 모호함. sessions로 확인 후 C-… / X-… / G-… 코드를 선택해 주세요.')
     row=validate_target(matches[0])
     with locked('view.lock'):
         ui=read_json('ui.json',{})
@@ -384,7 +392,7 @@ def choose(selector,catalog=None):
 
 
 def selection_text(row):
-    provider='Claude Code' if row['provider']=='claude' else 'Codex'
+    provider={'claude':'Claude Code','codex':'Codex','agy':'Antigravity'}[row['provider']]
     return f"선택됨 · {provider}\n{row['name']}\n{row['code']} · {row['state']} · 모델 {row.get('model') or '미제공'}\n보내기: 톡턴 보내 내용"
 
 
@@ -418,11 +426,11 @@ def phone_text(catalog):
     lines=[]
     for row in catalog['rows']:
         checked=any(identity(item)==identity(row) for item in checks)
-        if row.get('live') or checked:
-            label='Claude Code' if row['provider']=='claude' else 'Codex'
+        if row.get('live') or checked or row['provider']=='agy' and row.get('reachable'):
+            label={'claude':'Claude Code','codex':'Codex','agy':'Antigravity'}[row['provider']]
             lines.append(f"{'[✓]' if checked else '[ ]'} {row['code']} · {row['name']}\n  {label} · {row['state']}")
     lines=[f'지금 연결할 수 있는 세션 {len(lines)}개 · [✓] 결과 받는 중',*lines,*catalog['errors'].values(),
-           '','체크 C-… X-…  → 받을 세션 바꾸기\n화면  → PC 화면 스샷\n세션 all  → 저장된 세션까지 전부']
+           '','체크 C-… X-… G-…  → 받을 세션 바꾸기\n화면  → PC 화면 스샷\n세션 all  → 저장된 세션까지 전부']
     return '\n'.join(lines)
 
 
@@ -431,7 +439,7 @@ def list_text(catalog=None,provider='all'):
     current=selected()
     checks=watched()
     lines=[]
-    for key,label in [('claude','Claude Code'),('codex','Codex')]:
+    for key,label in [('claude','Claude Code'),('codex','Codex'),('agy','Antigravity')]:
         if provider!='all' and provider!=key:
             continue
         rows=[row for row in catalog['rows'] if row['provider']==key]
@@ -445,5 +453,5 @@ def list_text(catalog=None,provider='all'):
         if catalog['errors'].get(key):
             lines.append(catalog['errors'][key])
         lines.append('')
-    lines.append('결과 수신 체크: 톡턴 체크 C-… X-…\n메시지 대상: 톡턴 선택 C-… 또는 X-…\n전달: 톡턴 보내 내용\n최근 저장 세션: 톡턴 세션 recent')
+    lines.append('결과 수신 체크: 톡턴 체크 C-… X-… G-…\n메시지 대상: 톡턴 선택 C-… / X-… / G-…\n전달: 톡턴 보내 내용\n최근 저장 세션: 톡턴 세션 recent')
     return '\n'.join(lines)

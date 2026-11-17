@@ -46,6 +46,8 @@ def accounts():
 
 
 def login_state(provider):
+    if provider == 'agy':
+        return None  # Session metadata is not proof of a current authenticated account.
     if provider not in ('claude','codex'):
         raise ValueError('로그인 대상은 claude 또는 codex입니다.')
     command=[executable(provider)]+(['auth','status','--json'] if provider=='claude' else ['login','status'])
@@ -137,7 +139,10 @@ def codex_usage():
 
 
 def usage(provider='all'):
-    jobs = {'claude': claude_usage, 'codex': codex_usage}
+    jobs = {'claude': claude_usage, 'codex': codex_usage,
+            'agy': lambda: {'state':'unavailable','error':'AGY 사용량은 원래 agy 창의 /usage에서 확인하세요.'}}
+    if provider != 'all' and provider not in jobs:
+        raise ValueError('사용량 대상: claude, codex, agy 또는 all')
     if provider != 'all':
         jobs = {provider: jobs[provider]}
     results = {}
@@ -174,7 +179,11 @@ def switch_account(provider, number, *, expected_label=None):
 def config_path(provider):
     if provider == 'claude':
         return Path(os.environ.get('CLAUDE_CONFIG_DIR', Path.home() / '.claude')) / 'settings.json'
-    return Path(os.environ.get('CODEX_HOME', Path.home() / '.codex')) / 'config.toml'
+    if provider == 'codex':
+        return Path(os.environ.get('CODEX_HOME', Path.home() / '.codex')) / 'config.toml'
+    if provider == 'agy':
+        return Path.home() / '.gemini/antigravity-cli/settings.json'
+    raise ValueError('지원하지 않는 설정 대상입니다.')
 
 
 def provider_config(provider):
@@ -182,7 +191,7 @@ def provider_config(provider):
     if not path.exists():
         return {}
     text = path.read_text(encoding='utf-8-sig')
-    return json.loads(text) if provider == 'claude' else tomllib.loads(text)
+    return tomllib.loads(text) if provider == 'codex' else json.loads(text)
 
 
 def replace_toml_root(text, key, value):
@@ -217,6 +226,8 @@ def replace_toml_root(text, key, value):
 
 
 def update_provider_setting(provider, key, value):
+    if provider not in ('claude','codex'):
+        raise ValueError('AGY 설정은 원래 agy 창의 /config에서 변경하세요.')
     path = config_path(provider)
     original = path.read_text(encoding='utf-8-sig') if path.exists() else ('{}' if provider == 'claude' else '')
     if provider == 'claude':
@@ -236,12 +247,30 @@ def model_settings():
         data = provider_config(provider)
         settings[provider] = {'model': data.get('model', 'provider default'),
             'effort': data.get('model_reasoning_effort' if provider == 'codex' else 'effortLevel', 'provider default')}
+    try:
+        agy = provider_config('agy')
+        settings['agy'] = {'model': agy.get('model') or 'provider default', 'effort': agy.get('effort') or 'provider default'}
+    except (OSError, ValueError, AttributeError):
+        settings['agy'] = {'model':'설정 미확인', 'effort':'미확인'}
     settings['relay'] = {'model': read_json('delivery.json', {}).get('model', 'gpt-6-luna')}
     settings['scope'] = 'Codex·Claude는 새 작업의 사용자 기본값. 세션·프로젝트·환경변수 설정이 우선할 수 있음.'
     return settings
 
 
 def models(provider):
+    if provider == 'agy':
+        try:
+            result = subprocess.run([executable('agy'), 'models'], capture_output=True, encoding='utf-8',
+                                    timeout=20, creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        except subprocess.TimeoutExpired:
+            raise RuntimeError('AGY 모델 조회 시간이 초과됐습니다. 원래 터미널에서 agy models를 확인하세요.') from None
+        if result.returncode:
+            raise RuntimeError('AGY 모델 조회 실패. 원래 터미널에서 agy models를 확인하세요.')
+        values = [match[1] for line in result.stdout.splitlines()
+                  if (match := re.match(r'^([a-z][a-z0-9._:/-]+)\s+\S', line.strip()))]
+        if not values:
+            raise RuntimeError('AGY 모델 목록 형식 미확인. 원래 터미널에서 agy models를 확인하세요.')
+        return list(dict.fromkeys(values))
     if provider in ('codex', 'relay'):
         try:
             with CodexReader() as client:
@@ -259,6 +288,8 @@ def models(provider):
 
 
 def set_model(provider, model):
+    if provider == 'agy':
+        raise ValueError('AGY 모델은 원래 창의 /model 또는 talkturn agy --model 모델ID로 선택하세요.')
     if provider not in ('codex', 'claude', 'relay') or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._:/\[\]-]{0,150}', model):
         raise ValueError('올바른 모델 이름 필요.')
     if provider in ('codex', 'relay') and not(provider=='relay' and model=='claude-haiku-5-5') and model not in models(provider):
@@ -274,6 +305,8 @@ def set_model(provider, model):
 
 
 def set_effort(provider, effort):
+    if provider == 'agy':
+        raise ValueError('AGY 노력도는 원래 창의 /effort 또는 talkturn agy --effort 값으로 선택하세요.')
     choices = {'codex': {'minimal','low','medium','high','xhigh','max','ultra'}, 'claude': {'low','medium','high','xhigh','max'}}
     if provider not in choices or effort not in choices[provider]:
         raise ValueError('지원 노력도 확인: codex low/medium/high/xhigh/max/ultra, claude low/medium/high/xhigh/max. 모델별 지원 범위는 다름.')

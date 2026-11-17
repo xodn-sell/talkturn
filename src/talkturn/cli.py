@@ -8,7 +8,7 @@ import time
 from rich.console import Console
 from rich.panel import Panel
 from . import __version__
-from .commands import parse, execute, HELP, selected_section, select_section, SECTION_LABELS, SECTION_MENU
+from .commands import parse, execute, HELP, selected_section, select_section, SECTION_LABELS, SECTION_MENU, AGY_ACCOUNT_NOTICE
 from .runtime import ROOT, executable, read_json, write_json, locked
 
 console = Console(highlight=False)
@@ -51,7 +51,7 @@ def setup(args):
     parser.add_argument('--no-startup', action='store_true')
     parser.add_argument('--relay-model',type=str.lower,choices=['luna','haiku','gpt-6-luna','claude-haiku-5-5'],
                         help='답장 중계 모델. 새 설정 기본값: gpt-6-luna')
-    parser.add_argument('--section',type=str.lower,choices=['claude','codex','chatgpt','all'],help='처음 표시할 AI 섹션')
+    parser.add_argument('--section',type=str.lower,choices=['claude','codex','chatgpt','agy','antigravity','안티그래비티','all'],help='처음 표시할 AI 섹션')
     parser.add_argument('--computer-name',help='TalkTurn에 표시할 이 컴퓨터의 이름 (기본: 내 PC)')
     options = parser.parse_args(args)
     relay_model=RELAY_MODELS.get(options.relay_model)
@@ -101,6 +101,9 @@ def setup(args):
     if options.section:
         select_section(options.section)
     service.install_hooks()
+    if options.section in ('agy','antigravity','안티그래비티'):
+        from .agy_hooks import install
+        install()
     service.startup(not options.no_startup)
     result = service.start()
     if options.migrate:
@@ -109,6 +112,13 @@ def setup(args):
 
 
 def dispatch(parts):
+    if parts==['setup-agy']:
+        executable('agy')
+        from .agy_hooks import install
+        install()
+        return 'Antigravity 완료 알림 훅을 설치했습니다. agy에서 작업을 연 뒤 TalkTurn에서 G- 세션을 체크하세요.'
+    if parts[0] in ('account-add','switch') and len(parts)>1 and parts[1]=='agy':
+        raise ValueError(AGY_ACCOUNT_NOTICE)
     if parts[0]=='account-add' and len(parts)<=2 and sys.stdin.isatty():
         from .account_menu import add
         return add(console,parts[1] if len(parts)==2 else 'claude')
@@ -120,7 +130,7 @@ def dispatch(parts):
         if len(parts)==2:
             return connect(parts[1])
         if not sys.stdin.isatty():
-            return 'AI 연결 추가: talkturn connect codex 또는 talkturn connect claude'
+            return 'AI 연결 추가: talkturn connect codex / claude / agy'
         return menu(console)
     if parts[0]=='ui':
         return '웹 화면은 중지했습니다. talkturn을 실행해 터미널에서 사용하세요.'
@@ -133,7 +143,7 @@ def dispatch(parts):
     if parts == ['uninstall']:
         from .service import uninstall
         return uninstall()
-    if parts[0] in ('codex','claude'):
+    if parts[0] in ('codex','claude','agy'):
         # Interactive launch stays in the user's terminal. Arguments remain argv, never shell text.
         result = subprocess.run([executable(parts[0]),*parts[1:]])
         return f'{parts[0]} 종료 코드 {result.returncode}'
@@ -182,6 +192,8 @@ def interactive():
                     message=setup(['--relay-model',model] if model in ('gpt-6-luna','claude-haiku-5-5') else [])
                 elif value['action']=='refresh':
                     message='작업 목록과 카톡 상태를 새로고침했습니다.'
+                elif provider=='agy' and value['action'] in ('account-add','switch'):
+                    message=AGY_ACCOUNT_NOTICE
                 else:
                     from .account_menu import add,switch
                     message=(add if value['action']=='account-add' else switch)(console,provider)
@@ -271,7 +283,7 @@ def interactive():
                         'checked_codes':[row['code'] for row in view.get('watched',[])]})
                 selection_screen()
                 continue
-            if text.isdigit() or text.upper().startswith(('C-','X-')) and ' ' not in text:
+            if text.isdigit() or text.upper().startswith(('C-','X-','G-')) and ' ' not in text:
                 response(console,selection_text(pick(text)))
                 continue
             parts=parse(text)
@@ -305,7 +317,7 @@ def main():
         if args in (['--version'],['-V']):
             console.print(__version__)
         elif args in (['--help'],['-h']):
-            console.print(HELP+'\n\n터미널 전용: connect [claude|codex] / setup [--self-chat 이름] [--relay-model luna|haiku] [--computer-name 이름] [--section claude|chatgpt|all] / account-add claude|codex / start / stop / startup on|off / uninstall / codex / claude',markup=False)
+            console.print(HELP+'\n\n터미널 전용: connect [claude|codex|agy] / setup-agy / setup [--self-chat 이름] [--relay-model luna|haiku] [--computer-name 이름] [--section claude|chatgpt|agy|all] / account-add claude|codex / start / stop / startup on|off / uninstall / codex / claude / agy [인수]\nAGY 별칭: antigravity / 안티그래비티. AGY 계정 추가·전환은 지원하지 않습니다.',markup=False)
         elif not args:
             if sys.stdin.isatty():
                 interactive()
@@ -314,7 +326,7 @@ def main():
         else:
             parts=[*args]
             from .commands import ALIASES, PROVIDERS
-            parts[0]=ALIASES.get(parts[0],parts[0])
+            parts[0]=ALIASES.get(parts[0].lower(),parts[0])
             if parts[0] in ('tell','computer-name') and len(parts)>1:
                 parts=[parts[0],' '.join(parts[1:])]
             if len(parts)>1 and parts[0] in ('account-add','connect','section','sessions','usage','switch','model','models','effort'):
