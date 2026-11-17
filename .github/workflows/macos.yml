@@ -1,6 +1,7 @@
 name: macOS core compatibility
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'src/**'
@@ -33,10 +34,6 @@ jobs:
           - os: macos-15-intel
             python: '3.11'
     env:
-      TALKTURN_HOME: ${{ runner.temp }}/talkturn-macos/state
-      CODEX_HOME: ${{ runner.temp }}/talkturn-macos/codex
-      CLAUDE_CONFIG_DIR: ${{ runner.temp }}/talkturn-macos/claude
-      TALKTURN_AGY_BIN: ${{ runner.temp }}/talkturn-macos/missing-agy
       TALKTURN_FONT: /System/Library/Fonts/AppleSDGothicNeo.ttc
       PYTHONUTF8: '1'
     steps:
@@ -51,6 +48,14 @@ jobs:
           python -m pip install build
           python -m build
           python -m pip install dist/*.whl
+      - name: Isolate temporary state
+        run: |
+          mkdir -p "$RUNNER_TEMP/talkturn-macos/"{state,codex,claude,profile}
+          printf '%s\n' \
+            "TALKTURN_HOME=$RUNNER_TEMP/talkturn-macos/state" \
+            "CODEX_HOME=$RUNNER_TEMP/talkturn-macos/codex" \
+            "CLAUDE_CONFIG_DIR=$RUNNER_TEMP/talkturn-macos/claude" \
+            "TALKTURN_AGY_BIN=$RUNNER_TEMP/talkturn-macos/missing-agy" >> "$GITHUB_ENV"
       - name: Check installed CLI and Korean rendering without Kakao
         env:
           HOME: ${{ runner.temp }}/talkturn-macos/profile
