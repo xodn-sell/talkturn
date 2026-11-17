@@ -1,6 +1,6 @@
 # TalkTurn 0.1.0 알파 릴리스 노트 초안
 
-상태: 알파 공개 준비 중. 공개 릴리스와 PyPI 게시는 아직 하지 않았으며 출시일은 확정하지 않았습니다. 아래 표는 2026-11-17 AGY 통합 후 확인과 이전 검증을 구분합니다.
+상태: 비공개 GitHub 저장소에 소스 업로드와 Windows CI 검증을 마치고 알파 공개를 준비 중입니다. 공개 릴리스와 PyPI 게시는 아직 하지 않았으며 출시일은 확정하지 않았습니다. 아래 표는 2026-11-17 AGY 통합 후 확인과 이전 검증을 구분합니다.
 
 TalkTurn은 Windows 개발자가 Claude Code·Codex·Antigravity CLI의 작업 결과를 카카오톡 나와의 채팅에서 보고, 답장으로 기존 작업을 이어가는 터미널 도구입니다. Kakao 공식 제품이 아닙니다.
 
@@ -38,10 +38,10 @@ TalkTurn은 Windows 개발자가 Claude Code·Codex·Antigravity CLI의 작업 �
 | AGY 답장의 실제 카톡 왕복 | 아직 확인하지 않음 |
 | 새 결과 사진의 실제 카톡 왕복 | 아직 확인을 마치지 않음 |
 | Claude 질문·승인 응답의 실제 카톡 왕복 | 아직 확인을 마치지 않음 |
-| GitHub Actions의 새 Windows 환경 | `windows-latest` 설치·테스트·빌드 검증 준비 중 |
+| GitHub Actions의 새 Windows 환경 | [실행 44027858708](https://github.com/xodn-sell/talkturn/actions/runs/44027858708) 성공. `de2b1d7`의 Python 3.11·3.13에서 빌드·wheel 설치·CLI·한글 이미지·단위 테스트 통과 |
 | 실제 다른 Windows PC의 신규 설치 | 카카오톡·OCR·CLI를 포함한 동작은 아직 확인하지 않음 |
 
-로컬 자동 시험과 격리 설치는 같은 Windows PC에서 수행했습니다. GitHub Actions는 별도의 새 Windows 환경에서 패키지 설치를 확인하는 용도이며, 실제 카카오 UI나 다른 사용자 PC의 호환성까지 확인하는 시험은 아닙니다. 앱·에디터의 모든 세션 수신, 한국어 외 카카오 내보내기 형식은 지원을 보장하지 않습니다. Claude MCP의 비정형·빈 성공 응답은 실제 CLI 버전별 접수 증거를 추가 확인해야 합니다.
+로컬 자동 시험과 격리 설치는 같은 Windows PC에서 수행했고, GitHub Actions에서는 별도의 새 Windows 환경에서 설치·실행을 확인했습니다. CI는 실제 카카오 UI나 다른 사용자 PC의 OCR·계정 연동까지 확인한 시험은 아닙니다. 현재 저장소가 비공개이므로 CI 링크에는 접근 권한이 필요합니다. 앱·에디터의 모든 세션 수신, 한국어 외 카카오 내보내기 형식은 지원을 보장하지 않습니다. Claude MCP의 비정형·빈 성공 응답은 실제 CLI 버전별 접수 증거를 추가 확인해야 합니다.
 
 ## 설치 전 알아둘 점
 

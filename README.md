@@ -21,11 +21,13 @@ Windows용 터미널 CLI. Claude Code·Codex·Antigravity CLI(`agy`)의 작업 �
 - **중계 사용량:** 자동 답장 판별은 선택한 모델을 호출하므로 해당 계정의 사용량·한도가 적용됩니다. 양쪽 CLI가 로그인된 경우 한도 소진 시 다른 중계 모델로 전환할 수 있습니다. 이미지 변환과 로컬 OCR 자체에는 LLM 호출이 없습니다. `talkturn router off`로 모델 호출 없이 작업 번호를 지정해 전달할 수 있습니다.
 - **마우스 잠금:** 연결하면 마우스·터치패드 입력이 잠깁니다. **Esc를 약 2.5초 길게 누르면 잠금이 풀리고 연결이 종료됩니다.** 키보드는 계속 사용할 수 있습니다. 터미널의 `talkturn out`으로도 종료할 수 있습니다.
 
-**검증 상태:** 2026-11-17 AGY 통합 후 Python 3.13 소스 실행과 Python 3.11 wheel 설치 환경에서 각각 자동 테스트 **224개**를 통과했습니다. 기존 170개에 AGY 관련 54개를 추가한 결과입니다. 개발 PC의 AGY CLI 1.5.9에서 같은 대화 재개·이전 문맥 유지, 실제 완료 훅의 응답 추출, 별도 작업 프로세스의 접수·정상 종료와 중복 훅 억제도 확인했습니다. 이 AGY 시험의 카톡 전송은 0건입니다. 새 결과 사진·AGY 답장·Claude 질문의 실제 카톡 왕복과 다른 Windows PC의 신규 설치는 아직 확인을 마치지 않았습니다.
+**검증 상태:** 2026-11-17 AGY 통합 후 Python 3.13 소스 실행과 Python 3.11 wheel 설치 환경에서 각각 자동 테스트 **224개**를 통과했습니다. 기존 170개에 AGY 관련 54개를 추가한 결과입니다. 개발 PC의 AGY CLI 1.5.9에서 같은 대화 재개·이전 문맥 유지, 실제 완료 훅의 응답 추출, 별도 작업 프로세스의 접수·정상 종료와 중복 훅 억제도 확인했습니다. 이 AGY 시험의 카톡 전송은 0건입니다. 새 결과 사진·AGY 답장·Claude 질문의 실제 카톡 왕복과 다른 Windows 사용자 PC의 카톡·OCR·계정 연동은 아직 확인을 마치지 않았습니다.
+
+**새 Windows 환경에서도 확인했습니다.** [GitHub Actions 실행](https://github.com/xodn-sell/talkturn/actions/runs/44027858708)에서 Python 3.11·3.13의 빌드, wheel 설치, CLI·한글 이미지, 단위 테스트가 모두 통과했습니다. 실제 카카오톡·OCR·사용자 계정까지 연결한 다른 PC 시험과는 구분합니다.
 
 [설치](#설치) · [Antigravity 연결](#antigravity-cli-연결) · [문제 해결](#문제-해결) · [릴리스 노트 초안](RELEASE_NOTES.md)
 
-저장소: [xodn-sell/talkturn](https://github.com/xodn-sell/talkturn). 알파 공개 준비 중이며 PyPI에는 아직 게시하지 않았습니다. 공개 후 같은 버전의 wheel과 소스 아카이브를 [Releases](https://github.com/xodn-sell/talkturn/releases)에 함께 제공할 예정입니다.
+저장소: [xodn-sell/talkturn](https://github.com/xodn-sell/talkturn). 현재 비공개 저장소에 소스를 올려 알파 공개를 준비하고 있으며 PyPI에는 아직 게시하지 않았습니다. 저장소와 CI 링크는 접근 권한이 있어야 열 수 있습니다. 공개 후 같은 버전의 wheel과 소스 아카이브를 [Releases](https://github.com/xodn-sell/talkturn/releases)에 함께 제공할 예정입니다.
 
 ## 결과와 답장
 
@@ -291,7 +293,7 @@ uv build
 
 개발 테스트는 임시 설정과 모의 provider를 사용합니다. 실제 계정을 바꾸거나 카톡을 전송하지 않습니다. 사용자 인계 시 `ping`으로 실제 전송을 따로 확인합니다.
 
-GitHub Actions 설정은 `windows-latest`의 Python 3.11·3.13에서 패키지 설치, 단위 테스트와 wheel·소스 아카이브 빌드를 수행합니다. 새 CI 환경의 설치 검증을 준비 중이며 아직 실행 결과를 반영하지 않았습니다. 로그인·카카오 UI 조작·메시지 전송은 CI에서 실행하지 않습니다. 사진 대조 테스트에는 저장소에 포함한 생성 테스트 이미지 두 장을 사용합니다. CI의 새 Windows 환경과 실제 사용자 PC의 카톡·OCR·CLI 설정 검증은 구분합니다.
+2026-11-17 [GitHub Actions](https://github.com/xodn-sell/talkturn/actions/runs/44027858708)에서 커밋 `de2b1d7`의 `windows-latest` Python 3.11·3.13 작업이 모두 통과했습니다. sdist·wheel 빌드, 만든 wheel 설치, CLI 도움말·버전, 한글 이미지 생성, 단위 테스트를 실행했습니다. 로그인·카카오 UI 조작·메시지 전송은 CI에서 실행하지 않습니다. 사진 대조 테스트에는 저장소에 포함한 생성 테스트 이미지 두 장을 사용합니다. CI의 새 Windows 환경과 실제 사용자 PC의 카톡·OCR·CLI 설정 검증은 구분합니다.
 
 2026-11-17 AGY 통합 후 로컬 검증: Python 3.13 소스 실행과 Python 3.11 wheel 설치 환경에서 각각 224개 테스트 통과. 기존 170개와 AGY 관련 54개이며, 두 버전의 실행 횟수를 서로 다른 테스트 수로 합산하지 않습니다. Python 3.13 wheel 격리 환경에서 CLI 13개 경로와 한글 결과 이미지 생성·표시도 확인했습니다. 실제 AGY 1.5.9의 같은 대화 재개·문맥 유지, native 완료 훅 본문 추출, 별도 작업 프로세스 접수·정상 종료와 중복 완료 훅 억제도 확인했습니다. AGY 직접 시험은 카톡 전송 없이 진행했습니다.
 
