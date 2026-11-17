@@ -1,8 +1,9 @@
 # 다음 단계
 
 - 공개 전 확인: 새 결과 사진을 실제 나와의 채팅으로 전송 → 사진 인용 답장 → 원래 세션 접수 → 확인 메시지까지 검증. Claude `AskUserQuestion`·지원되는 `PermissionRequest`도 실제 질문 말풍선 답장으로 원래 요청이 해결되는지 확인. 실제 다른 Windows 사용자 PC에서 한국어 OCR·카카오톡·CLI 계정을 함께 연결한 동작은 아직 미확인.
-- 공개 준비: [비공개 저장소](https://github.com/xodn-sell/talkturn)에 소스 업로드 완료. [GitHub Actions](https://github.com/xodn-sell/talkturn/actions/runs/44027858708)의 새 `windows-latest` Python 3.11·3.13 환경에서 빌드·wheel 설치·CLI·한글 이미지·단위 테스트 통과. 실전 미검증 범위를 명시한 뒤 알파 공개 범위를 확정. 같은 버전의 wheel·소스 아카이브를 함께 제공할 예정이며 공개 릴리스·PyPI 게시는 아직 하지 않음.
-- 자동 검증: 2026-11-17 AGY 통합 후 Python 3.13 소스 실행과 Python 3.11 wheel 설치 환경에서 각각 224개 테스트 통과(기존 170개+AGY 관련 54개). Python 3.13 wheel 격리 환경의 CLI 13개 경로와 한글 결과 이미지도 확인. 이전 2026-11-16의 두 Python 버전별 170개 테스트·34개 CLI 시나리오와 합성 썸네일 대조 12건은 AGY 통합 전 기록. 모두 같은 Windows PC의 로컬 검증이며 실제 카톡 왕복·다른 PC의 설치와 구분.
+- 공개 준비: [비공개 저장소](https://github.com/xodn-sell/talkturn)에 소스 업로드 완료. [Windows CI](https://github.com/xodn-sell/talkturn/actions/runs/44034353934)와 [macOS 공통 기능 CI](https://github.com/xodn-sell/talkturn/actions/runs/44034756881) 성공. 실전 미검증 범위를 명시한 뒤 알파 공개 범위를 확정. 같은 버전의 wheel·소스 아카이브를 함께 제공할 예정이며 공개 릴리스·PyPI 게시는 아직 하지 않음.
+- 최신 자동 검증: Windows Python 3.11·3.13은 각각 231건 중 230건 통과·POSIX 전용 1건 건너뜀. macOS Intel 15.7.9/Python 3.11.9·Apple Silicon 26.7.2/Python 3.13.17은 각각 공통 시험 79건 중 76건 통과·Windows 전용 3건 건너뜀. 각 CI에서 wheel 빌드·설치·CLI·한글 이미지도 확인. 서로 다른 범위의 시험이며 플랫폼 전체 지원으로 해석하지 않음.
+- macOS 범위: POSIX 파일 잠금, 실행 파일 탐색과 공통 subprocess 옵션을 정리. 설치·일부 CLI·설정·메타데이터·모의 전송·한글 렌더링만 검증. `TALKTURN_FONT=/System/Library/Fonts/AppleSDGothicNeo.ttc`를 직접 지정했으며 자동 글꼴 탐색·모든 이모지 표시는 보장하지 않음. 카카오톡 자동화·OCR은 미지원이고 실제 provider 로그인 연동은 미검증. Mac 카톡 연동은 별도 구현·실전 검증이 필요.
 - Antigravity 연동: 개발 PC의 CLI 1.5.9에서 같은 ID로 대화를 재개한 문맥 유지 응답, 실제 완료 훅의 응답 추출, 별도 작업 프로세스의 접수·정상 종료와 중복 완료 훅 억제를 확인. 카톡 전송은 0건. 세 번째 AGY 탭·G-코드·`setup-agy` 완료 훅·`talkturn agy` 인수 전달을 추가. ACP 메타데이터로 저장 대화를 조회하고 같은 ID·작업 경로로 재개하며 원래 터미널 직접 연결이나 실행 상태 판정은 하지 않음. 실제 카톡 답장 왕복은 별도 확인 필요.
 - AGY의 제한: 원격 permission은 취소하고 추가 질문 응답은 미지원. 계정·모델·노력도·사용량은 원래 AGY에서 관리. CLI·ACP의 공식 지원 범위가 확인될 때 확장을 검토하며, 기존 대화를 새 세션으로 대체하거나 권한을 자동 승인하지 않음.
 - 현재 구현: 완료 결과의 제목·본문·코드·표·이모지와 페이지 구분을 개선. `in/update`·컴퓨터 이름·세션 제목 카드·전달 확인은 텍스트로 유지. Pillow 이미지 변환에는 LLM을 쓰지 않으며 `display text`도 유지.

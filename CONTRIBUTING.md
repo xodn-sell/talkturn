@@ -12,13 +12,15 @@ PR에는 변경 목적·영향·직접 관련 검증을 적습니다. 개인 채
 
 버그 제보에는 Windows·Python·카카오톡 PC·해당 CLI의 버전, 문제가 생긴 단계, 재현 순서, 기대 결과와 실제 결과를 적어 주세요. 개인 대화 대신 짧은 테스트 문구를 사용하고 계정 이름·세션 UUID·로컬 경로는 지워 주세요. `reply-log.json`을 참고한다면 필요한 `stage`·`gate`만 옮기고, 로그 전체·인증 파일·실패 캡처를 그대로 첨부하지 않습니다. 전송 성공 여부가 불분명하면 먼저 카톡과 원래 세션의 접수를 확인하고 같은 요청을 반복하지 마세요.
 
-저장소는 [xodn-sell/talkturn](https://github.com/xodn-sell/talkturn)이며 현재 비공개 상태로 소스 업로드와 Windows CI 검증을 마쳤습니다. 알파 공개 후 [Releases](https://github.com/xodn-sell/talkturn/releases)에서 wheel과 같은 버전의 소스 아카이브를 함께 제공합니다.
+저장소는 [xodn-sell/talkturn](https://github.com/xodn-sell/talkturn)이며 현재 비공개 상태로 소스 업로드, Windows CI와 macOS 공통 기능 CI 검증을 마쳤습니다. 알파 공개 후 [Releases](https://github.com/xodn-sell/talkturn/releases)에서 wheel과 같은 버전의 소스 아카이브를 함께 제공합니다.
 
 Windows의 Python 3.11·3.13에서 `python -m unittest discover -s tests -v`와 `python -m build`로 검증합니다. CI는 모의 provider와 임시 상태를 사용하며 로그인·카카오 UI 조작·메시지 전송을 실행하지 않습니다. 실제 수신 검증 결과는 단위 테스트 결과와 구분해 적습니다.
 
-2026-11-17 [GitHub Actions 실행 44027858708](https://github.com/xodn-sell/talkturn/actions/runs/44027858708)이 성공했습니다. 커밋 `de2b1d7`을 새 `windows-latest` Python 3.11·3.13 환경에서 빌드하고 만든 wheel을 설치한 뒤 CLI·한글 이미지·단위 테스트를 확인했습니다. 저장소가 비공개인 동안에는 CI 링크에도 접근 권한이 필요합니다.
+2026-11-17 [Windows CI 실행 44034353934](https://github.com/xodn-sell/talkturn/actions/runs/44034353934)는 커밋 `6a7a5e6`의 Python 3.11·3.13에서 각각 231건 중 230건 통과·POSIX 전용 1건 건너뜀으로 완료됐습니다. [macOS CI 실행 44034756881](https://github.com/xodn-sell/talkturn/actions/runs/44034756881)는 커밋 `00b549b`의 Intel 15.7.9/Python 3.11.9·Apple Silicon 26.7.2/Python 3.13.17에서 각각 공통 시험 79건 중 76건 통과·Windows 전용 3건 건너뜀으로 완료됐습니다. 각 작업에서 만든 wheel의 설치·CLI·한글 이미지도 확인했습니다. 두 커밋은 실행 코드·테스트가 같고 macOS 워크플로 설정만 다릅니다.
 
-2026-11-17 AGY 통합 후 Python 3.13 소스 실행과 Python 3.11 wheel 설치 환경에서 각각 224개 테스트를 통과했습니다. 기존 170개에 AGY 관련 54개를 추가한 수입니다. 이전 2026-11-16의 두 Python 버전별 34개 CLI 시나리오는 AGY 통합 전 기록입니다. 같은 테스트를 두 버전에서 실행했다고 서로 다른 테스트 수로 합산하지 않습니다. 같은 PC의 가상환경 설치, GitHub Actions의 새 Windows 환경, 실제 다른 Windows PC의 설치, 카카오톡 왕복을 각각 구분해 기록합니다. 새 결과 사진·AGY 답장·Claude 질문의 실전 왕복과 다른 Windows 사용자 PC의 카톡·OCR·계정 연동은 아직 확인을 마치지 않았습니다.
+macOS 공통 기능 변경 전에는 AGY 통합 후 224개 테스트가 있었고, 공통 기능 검사 7개를 추가해 최신 전체 시험 집합은 231개입니다. Mac에서는 Windows UI·키보드·글꼴 의존 시험을 제외한 범위만 실행합니다. 전체 목록은 [macOS 워크플로](.github/workflows/macos.yml)를 따르며, 플랫폼 전용 건너뛰기를 숨기거나 Mac 전체 지원으로 기록하지 않습니다. 같은 시험을 여러 환경에서 실행한 횟수를 서로 다른 테스트 수로 합산하지 않습니다.
+
+Mac 렌더 검사는 `TALKTURN_FONT=/System/Library/Fonts/AppleSDGothicNeo.ttc`를 직접 지정한 [설치본 smoke](tests/macos_smoke.py)로 수행합니다. 한글 글리프·이미지 크기를 확인한 범위이며 글꼴 자동 탐색·모든 이모지 표시 보장은 아닙니다. `setup`이 Windows 필요 안내로 거절되는지도 확인합니다. macOS의 카카오톡 자동화·OCR은 지원하지 않으며 실제 provider 로그인 연동은 미검증입니다. 실제 카톡 왕복과 다른 사용자 PC의 앱 연동 검증은 계속 별도 항목입니다. 비공개 저장소의 CI 링크에는 접근 권한이 필요합니다.
 
 AGY 변경은 ACP 목록 메타데이터 조회와 동일 세션 ID·작업 경로 재개를 구분해 검증합니다. 저장 대화를 실행 중이라고 표시하거나 원래 터미널에 직접 연결한 것으로 기록하지 않습니다. 원격 permission 취소·추가 질문 미지원·접수 불명 시 재전송 금지·기존 사용자 훅 보존도 확인합니다. 완료 훅의 transcript 시험은 합성 기록으로 작성하고 실제 대화나 계정 정보를 fixture에 넣지 않습니다.
 

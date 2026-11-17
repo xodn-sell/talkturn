@@ -1,6 +1,6 @@
 # TalkTurn 0.1.0 알파 릴리스 노트 초안
 
-상태: 비공개 GitHub 저장소에 소스 업로드와 Windows CI 검증을 마치고 알파 공개를 준비 중입니다. 공개 릴리스와 PyPI 게시는 아직 하지 않았으며 출시일은 확정하지 않았습니다. 아래 표는 2026-11-17 AGY 통합 후 확인과 이전 검증을 구분합니다.
+상태: 비공개 GitHub 저장소에 소스를 올리고 Windows CI와 macOS 공통 기능 CI를 확인했습니다. 공개 릴리스와 PyPI 게시는 아직 하지 않았으며 출시일은 확정하지 않았습니다. 카카오톡 연동은 Windows 전용이며 아래 macOS 결과는 공통 기능의 호환성 검증입니다.
 
 TalkTurn은 Windows 개발자가 Claude Code·Codex·Antigravity CLI의 작업 결과를 카카오톡 나와의 채팅에서 보고, 답장으로 기존 작업을 이어가는 터미널 도구입니다. Kakao 공식 제품이 아닙니다.
 
@@ -12,6 +12,7 @@ TalkTurn은 Windows 개발자가 Claude Code·Codex·Antigravity CLI의 작업 �
 - `talkturn setup-agy`로 완료 알림 훅을 별도 등록하고 `talkturn agy [인수]`로 원래 CLI를 실행합니다. 기존 사용자 훅과 비활성화 설정은 보존합니다.
 - Claude의 질문·승인 요청을 전용 말풍선으로 표시합니다. 해당 말풍선의 인용 답장만 그 요청에 연결합니다. Codex 구조화 질문은 알림 전용입니다.
 - 이미지에서 세션 제목, 본문, 코드, 간단한 표를 구분합니다. 본문은 42px이며 페이지 높이는 최대 1500px입니다. Windows 대체 글꼴로 일반 이모지를 표시하고 원문을 요약하지 않습니다.
+- macOS Intel·Apple Silicon에서 wheel 설치, 일부 CLI·설정·파일 잠금·메타데이터·모의 전송과 한글 이미지 생성을 확인했습니다. Mac의 카카오톡 자동화·OCR은 미지원이며 실제 provider 로그인은 미검증입니다.
 
 ## 안정성 변경
 
@@ -21,12 +22,14 @@ TalkTurn은 Windows 개발자가 Claude Code·Codex·Antigravity CLI의 작업 �
 - 수신기 종료·시작 실패 상태를 구분하고, Windows의 일시적인 JSON 파일 교체 충돌을 제한된 횟수만 재시도합니다.
 - 개인 답장 로그·실패 캡처·PC 화면 캡처가 저장소와 배포 파일에 포함되지 않도록 제외 규칙을 보완했습니다.
 - AGY 1.5.9에서 실제 확인한 완료 이벤트와 transcript 두 형식을 처리합니다. 완료 응답의 `content`만 추출하고 별도 `thinking` 필드는 전송하지 않습니다.
+- 공통 실행 경로에서 플랫폼별 subprocess 옵션을 통일하고 POSIX 파일 잠금과 실행 권한 검사를 추가했습니다. 잠금 경합·정상 해제·예외·프로세스 종료를 실제 별도 프로세스로 검사합니다.
 
 ## 확인 범위
 
 | 확인 | 결과 |
 |---|---|
-| AGY 통합 후 자동 테스트 | Python 3.13 소스 실행·Python 3.11 wheel 설치 환경에서 각각 224개 통과. 기존 170개+AGY 관련 54개 |
+| 최신 Windows 자동 테스트 | Python 3.11·3.13에서 각각 231건 중 230건 통과, POSIX 전용 1건 건너뜀 |
+| macOS 공통 시험 | Intel 15.7.9/Python 3.11.9·Apple Silicon 26.7.2/Python 3.13.17에서 각각 79건 중 76건 통과, Windows 전용 3건 건너뜀 |
 | AGY 통합 후 wheel 확인 | Python 3.13 격리 환경에서 CLI 13개 경로 통과, 한글 결과 이미지 1개 생성·표시 확인 |
 | 이전 wheel 설치 후 CLI | 2026-11-16 AGY 통합 전 두 Python 버전에서 34개 시나리오를 각각 통과 |
 | 이전 결과 이미지 대조 | 2026-11-16 생성 이미지 4종 × 합성 썸네일 35·66·88px, 12건 통과 |
@@ -38,10 +41,11 @@ TalkTurn은 Windows 개발자가 Claude Code·Codex·Antigravity CLI의 작업 �
 | AGY 답장의 실제 카톡 왕복 | 아직 확인하지 않음 |
 | 새 결과 사진의 실제 카톡 왕복 | 아직 확인을 마치지 않음 |
 | Claude 질문·승인 응답의 실제 카톡 왕복 | 아직 확인을 마치지 않음 |
-| GitHub Actions의 새 Windows 환경 | [실행 44027858708](https://github.com/xodn-sell/talkturn/actions/runs/44027858708) 성공. `de2b1d7`의 Python 3.11·3.13에서 빌드·wheel 설치·CLI·한글 이미지·단위 테스트 통과 |
+| GitHub Actions의 새 Windows 환경 | [실행 44034353934](https://github.com/xodn-sell/talkturn/actions/runs/44034353934) 성공. `6a7a5e6`에서 빌드·wheel 설치·CLI·한글 이미지·단위 테스트 확인 |
+| GitHub Actions의 새 macOS 환경 | [실행 44034756881](https://github.com/xodn-sell/talkturn/actions/runs/44034756881) 성공. `00b549b`에서 빌드·wheel 설치·CLI·한글 이미지·공통 시험 확인 |
 | 실제 다른 Windows PC의 신규 설치 | 카카오톡·OCR·CLI를 포함한 동작은 아직 확인하지 않음 |
 
-로컬 자동 시험과 격리 설치는 같은 Windows PC에서 수행했고, GitHub Actions에서는 별도의 새 Windows 환경에서 설치·실행을 확인했습니다. CI는 실제 카카오 UI나 다른 사용자 PC의 OCR·계정 연동까지 확인한 시험은 아닙니다. 현재 저장소가 비공개이므로 CI 링크에는 접근 권한이 필요합니다. 앱·에디터의 모든 세션 수신, 한국어 외 카카오 내보내기 형식은 지원을 보장하지 않습니다. Claude MCP의 비정형·빈 성공 응답은 실제 CLI 버전별 접수 증거를 추가 확인해야 합니다.
+GitHub Actions에서 새 Windows와 macOS 환경의 설치·공통 기능을 확인했습니다. 두 CI 커밋은 실행 코드·테스트가 같고 macOS 워크플로 설정만 다릅니다. Mac은 명시적으로 고른 공통 시험 집합만 실행했으며 실제 카카오 UI·OCR·provider 계정에는 접근하지 않았습니다. 현재 저장소가 비공개이므로 CI 링크에는 접근 권한이 필요합니다. 실제 사용자 PC의 카톡 왕복과 계정 연동은 별도 확인이 필요합니다. 앱·에디터의 모든 세션 수신, 한국어 외 카카오 내보내기 형식은 지원을 보장하지 않습니다. Claude MCP의 비정형·빈 성공 응답은 실제 CLI 버전별 접수 증거를 추가 확인해야 합니다.
 
 ## 설치 전 알아둘 점
 
@@ -51,6 +55,7 @@ TalkTurn은 Windows 개발자가 Claude Code·Codex·Antigravity CLI의 작업 �
 - AGY 원격 승인 요청에는 `cancelled`를 반환하고 추가 질문(`elicitation`)은 지원하지 않습니다. 원래 작업이 실행 중인지 확인할 수 없으므로 동시에 지시하지 말고, 중단·접수 불명 상태는 원래 AGY 창에서 확인하세요.
 - 연결하면 마우스·터치패드가 잠깁니다. **Esc를 약 2.5초 길게 누르거나 `talkturn out`을 실행하면 연결을 종료합니다.** 키보드는 계속 사용할 수 있습니다.
 - `전달되었습니다.`는 원래 세션의 접수 확인이며 AI 작업 완료를 뜻하지 않습니다.
-- 카톡에 새로 올린 이미지·파일의 AI 전달, macOS·Linux, 자동 업데이트는 이번 알파에 포함되지 않습니다. 이미지의 URL·코드를 복사해야 할 때는 `talkturn display text`를 사용합니다.
+- macOS 공통 기능 검사에서는 `TALKTURN_FONT=/System/Library/Fonts/AppleSDGothicNeo.ttc`를 직접 지정했습니다. macOS의 글꼴 자동 탐색이나 모든 이모지 표시를 보장하지 않습니다.
+- 카톡에 새로 올린 이미지·파일의 AI 전달, macOS·Linux의 카카오톡 연동, 자동 업데이트는 이번 알파에 포함되지 않습니다. 이미지의 URL·코드를 복사해야 할 때는 `talkturn display text`를 사용합니다.
 
 설치와 복구 명령은 [README](README.md), 남은 작업은 [ROADMAP](ROADMAP.md)을 참고하세요. 공개 시 같은 버전의 wheel과 소스 아카이브를 [예정 Releases](https://github.com/xodn-sell/talkturn/releases)에 함께 제공할 계획입니다. 라이선스는 [AGPL-3.0-only](LICENSE)입니다.
