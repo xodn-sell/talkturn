@@ -10,7 +10,7 @@ import subprocess
 import time
 import tomllib
 from .codex_rpc import CodexReader
-from .runtime import ROOT, executable, read_json, write_json, run_json, locked, atomic_write
+from .runtime import ROOT, NO_WINDOW, executable, read_json, write_json, run_json, locked, atomic_write
 
 
 def remaining(value):
@@ -52,7 +52,7 @@ def login_state(provider):
         raise ValueError('로그인 대상은 claude 또는 codex입니다.')
     command=[executable(provider)]+(['auth','status','--json'] if provider=='claude' else ['login','status'])
     try:
-        result=subprocess.run(command,capture_output=True,encoding='utf-8',timeout=15,creationflags=subprocess.CREATE_NO_WINDOW)
+        result=subprocess.run(command,capture_output=True,encoding='utf-8',timeout=15,creationflags=NO_WINDOW)
     except subprocess.TimeoutExpired:
         raise TimeoutError('로그인 상태 확인 시간이 초과됐습니다. 잠시 후 다시 시도하세요.') from None
     if provider=='codex':
@@ -76,7 +76,7 @@ def add_account(provider,alias=None):
         # No slot/force options: ccswap chooses a free slot or refreshes the same login.
         try:
             result=subprocess.run(command,stdin=subprocess.DEVNULL,capture_output=True,
-                timeout=45,creationflags=subprocess.CREATE_NO_WINDOW)
+                timeout=45,creationflags=NO_WINDOW)
         except subprocess.TimeoutExpired:
             raise TimeoutError('계정 등록 확인 시간이 초과됐습니다. 계정 목록에서 등록 여부를 먼저 확인하세요.') from None
         if result.returncode:

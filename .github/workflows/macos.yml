@@ -1,0 +1,81 @@
+name: macOS core compatibility
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'MANIFEST.in'
+      - '.github/workflows/macos.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'MANIFEST.in'
+      - '.github/workflows/macos.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            python: '3.13'
+          - os: macos-15-intel
+            python: '3.11'
+    env:
+      TALKTURN_HOME: ${{ runner.temp }}/talkturn-macos/state
+      CODEX_HOME: ${{ runner.temp }}/talkturn-macos/codex
+      CLAUDE_CONFIG_DIR: ${{ runner.temp }}/talkturn-macos/claude
+      TALKTURN_AGY_BIN: ${{ runner.temp }}/talkturn-macos/missing-agy
+      TALKTURN_FONT: /System/Library/Fonts/AppleSDGothicNeo.ttc
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build and install the wheel
+        run: |
+          python -m pip install build
+          python -m build
+          python -m pip install dist/*.whl
+      - name: Check installed CLI and Korean rendering without Kakao
+        env:
+          HOME: ${{ runner.temp }}/talkturn-macos/profile
+        run: |
+          mkdir -p "$HOME" "$TALKTURN_HOME" "$CODEX_HOME" "$CLAUDE_CONFIG_DIR"
+          python tests/macos_smoke.py
+      - name: Run portable tests without real provider accounts or native UI
+        env:
+          HOME: ${{ runner.temp }}/talkturn-macos/profile
+          PYTHONPATH: ${{ github.workspace }}/tests
+        # Explicit scope: Win32 UI, Windows keyboard, and Windows emoji-font tests
+        # stay in tests.yml. Existing platform-specific skips remain visible.
+        run: >-
+          python -m unittest -v
+          test_atomic_write test_result_format test_reply_photo test_reply_crop
+          test_reply_privacy test_claude_transport test_relay_fallback
+          test_provider_edge_cases test_agy_transport test_routing_edge_cases
+          test_account_counts test_portable_core
+      - name: Save synthetic rendering and environment evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: macos-core-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/talkturn-macos/state/macos-smoke.json
+            ${{ runner.temp }}/talkturn-macos/state/rendered/*.png
+          if-no-files-found: error
+          retention-days: 7

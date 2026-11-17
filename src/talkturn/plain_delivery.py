@@ -10,7 +10,7 @@ import mimetypes
 import time
 from urllib.parse import unquote, urlsplit
 
-from .runtime import ROOT, PYTHON, executable, module_command, read_json, write_json
+from .runtime import ROOT, PYTHON, NO_WINDOW, executable, module_command, read_json, write_json
 from ._kakao.parser import has_export_structure, outgoing_texts
 
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
@@ -147,7 +147,7 @@ def _call_relay(prompt, schema, images, model):
         for image in images or []:
             command[-1:-1] = ['--image', image]
         process = subprocess.run(command, input=prompt, capture_output=True, encoding='utf-8',
-                                 timeout=120, creationflags=subprocess.CREATE_NO_WINDOW)
+                                 timeout=120, creationflags=NO_WINDOW)
         if process.returncode or not result_path.exists():
             from .relay_fallback import RelayQuotaExceeded, quota_exhausted
             if quota_exhausted(process.stdout,process.stderr):
@@ -177,7 +177,7 @@ def call_haiku(prompt: str, schema: dict, images: list[str] | None = None) -> di
     with tempfile.TemporaryDirectory(prefix='talkturn-relay-') as folder:
         result=subprocess.run(command,input=json.dumps(message)+'\n',cwd=folder,
             capture_output=True,text=True,encoding='utf-8',timeout=120,
-            creationflags=subprocess.CREATE_NO_WINDOW)
+            creationflags=NO_WINDOW)
     if result.returncode:
         from .relay_fallback import RelayQuotaExceeded, quota_exhausted
         if quota_exhausted(result.stdout,result.stderr):
@@ -310,7 +310,7 @@ def deliver(text: str, event_key: str = '', cwd: str = '', images: list[str] | N
         result = subprocess.run(module_command('native_send'),
                                 input=json.dumps(request, ensure_ascii=False), encoding='utf-8',
                                 capture_output=True, timeout=max(90, 15*len(attachments)+30),
-                                creationflags=subprocess.CREATE_NO_WINDOW)
+                                creationflags=NO_WINDOW)
         if result.returncode:
             # Never retry a possibly delivered native message automatically.
             raise RuntimeError(native_failure_message(result.stderr))

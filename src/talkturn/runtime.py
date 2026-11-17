@@ -1,5 +1,6 @@
 """User state, bounded process calls, and executable discovery."""
 from contextlib import contextmanager
+import errno
 import json
 import os
 from pathlib import Path
@@ -50,15 +51,15 @@ def executable(provider):
     override = os.environ.get('TALKTURN_' + provider.upper() + '_BIN') or os.environ.get('TOKTURN_' + provider.upper() + '_BIN')
     if provider=='agy' and override:
         path=Path(override)
-        if not path.is_file() or path.suffix.lower()!='.exe':
-            raise RuntimeError('TALKTURN_AGY_BIN은 설치된 agy.exe 경로여야 합니다.')
+        if not path.is_file() or (path.suffix.lower()!='.exe' if os.name=='nt' else not os.access(path,os.X_OK)):
+            raise RuntimeError('TALKTURN_AGY_BIN은 설치된 '+('agy.exe' if os.name=='nt' else 'agy 실행 파일')+' 경로여야 합니다.')
         return str(path)
     candidates = [Path(override)] if override else []
-    found = shutil.which(provider + '.exe') or shutil.which(provider)
+    found = (shutil.which(provider + '.exe') if os.name=='nt' else None) or shutil.which(provider)
     if found:
         candidates.append(Path(found))
-    candidates.append(Path.home() / '.local/bin' / (provider + '.exe'))
-    if provider == 'agy':
+    candidates.append(Path.home() / '.local/bin' / (provider + ('.exe' if os.name=='nt' else '')))
+    if provider == 'agy' and os.name=='nt':
         candidates.append(Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local')) / 'agy/bin/agy.exe')
     # npm's cmd/PowerShell shims must never receive chat text through a shell.
     npm_roots = [Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming')) / 'npm/node_modules']
@@ -70,7 +71,8 @@ def executable(provider):
         elif provider == 'codex':
             candidates.extend((npm / '@openai/codex').glob('node_modules/@openai/codex-*/vendor/*/bin/codex.exe'))
     for candidate in candidates:
-        if candidate.is_file() and candidate.suffix.lower() not in {'.cmd', '.bat', '.ps1'}:
+        if (candidate.is_file() and candidate.suffix.lower() not in {'.cmd', '.bat', '.ps1'}
+                and (os.name=='nt' or os.access(candidate,os.X_OK))):
             return str(candidate)
     raise RuntimeError(f'{provider} 실행 파일 없음. 설치 후 PATH 또는 TALKTURN_{provider.upper()}_BIN 설정 필요.')
 
@@ -97,7 +99,10 @@ def module_command(name, *args):
 
 @contextmanager
 def locked(name='send.lock', timeout=100):
-    import msvcrt
+    if os.name == 'nt':
+        import msvcrt
+    else:
+        import fcntl
     ROOT.mkdir(parents=True, exist_ok=True)
     with (ROOT / name).open('a+b') as handle:
         if handle.tell() == 0:
@@ -107,9 +112,14 @@ def locked(name='send.lock', timeout=100):
         while True:
             try:
                 handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                if os.name == 'nt':
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
-            except OSError:
+            except OSError as error:
+                if os.name != 'nt' and error.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
                 if time.monotonic() >= deadline:
                     raise TimeoutError('TalkTurn 작업이 진행 중임.')
                 time.sleep(.1)
@@ -117,4 +127,7 @@ def locked(name='send.lock', timeout=100):
             yield
         finally:
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            if os.name == 'nt':
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

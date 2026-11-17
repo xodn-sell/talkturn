@@ -15,7 +15,7 @@ from . import runtime as notify
 from .plain_delivery import call_luna,native_failure_message
 from ._kakao.parser import outgoing_texts
 from .reply_crop import isolate_reply,message_kind,plainly_other
-from .runtime import ROOT, PYTHON, executable, module_command, read_json, write_json
+from .runtime import ROOT, PYTHON, NO_WINDOW, executable, module_command, read_json, write_json
 
 
 
@@ -39,7 +39,7 @@ def native_read():
     with notify.locked():
         result = subprocess.run(module_command('native_send'),
             input=json.dumps({'read_only':True}),encoding='utf-8',capture_output=True,
-            timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
+            timeout=30,creationflags=NO_WINDOW)
         if result.returncode:
             raise RuntimeError(native_failure_message(result.stderr))
         return json.loads(result.stdout)['messages']
@@ -47,7 +47,7 @@ def native_read():
 
 def screenshot():
     result = subprocess.run(module_command('capture_self'),capture_output=True,
-                            timeout=15,creationflags=subprocess.CREATE_NO_WINDOW)
+                            timeout=15,creationflags=NO_WINDOW)
     if result.returncode:
         raise RuntimeError('Cannot inspect the reply quote')
     path = ROOT/'reply-view.png'
@@ -245,7 +245,7 @@ def forward(origin, text, *, quoted_request_id=None):
             raise ValueError('Original Codex session identity is unavailable')
         command = [executable('codex'),'queue','--thread',session_id,'--message',text,'--resume']
         result = subprocess.run(command,capture_output=True,encoding='utf-8',timeout=30,
-                                creationflags=subprocess.CREATE_NO_WINDOW)
+                                creationflags=NO_WINDOW)
         if result.returncode:
             raise RuntimeError('Codex rejected queueing to the original session')
         return {'provider':'codex','session_id':session_id,'accepted':True,
@@ -257,7 +257,7 @@ def forward(origin, text, *, quoted_request_id=None):
                 raise RuntimeError('Original Claude app peer identity is unavailable')
         else:
             result = subprocess.run([executable('claude'),'agents','--json','--all'],
-                capture_output=True,encoding='utf-8',timeout=20,creationflags=subprocess.CREATE_NO_WINDOW)
+                capture_output=True,encoding='utf-8',timeout=20,creationflags=NO_WINDOW)
             rows=json.loads(result.stdout)
             targets=[item for item in rows if item.get('sessionId')==session_id]
             if len(targets)!=1 or not targets[0].get('name'):
@@ -268,7 +268,7 @@ def forward(origin, text, *, quoted_request_id=None):
         for _ in range(2):
             result=subprocess.run(module_command('claude_transport', 'send'),
                 input=json.dumps({'name':name,'message':text,'expected_ref':origin.get('peer_ref')},ensure_ascii=False),
-                capture_output=True,encoding='utf-8',timeout=60,creationflags=subprocess.CREATE_NO_WINDOW)
+                capture_output=True,encoding='utf-8',timeout=60,creationflags=NO_WINDOW)
             if result.returncode!=3:
                 break  # 3: failed before the message left, so one more try cannot duplicate it.
             _reply_log('send_retry',result.stderr,session_id)
