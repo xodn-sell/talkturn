@@ -2,6 +2,14 @@ name: macOS core compatibility
 
 on:
   workflow_dispatch:
+    inputs:
+      check:
+        description: Core tests or read-only desktop prerequisites
+        type: choice
+        default: core
+        options:
+          - core
+          - desktop
   push:
     paths:
       - 'src/**'
@@ -22,6 +30,7 @@ permissions:
 
 jobs:
   core:
+    if: github.event_name != 'workflow_dispatch' || inputs.check != 'desktop'
     name: Core (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -84,3 +93,19 @@ jobs:
             ${{ runner.temp }}/talkturn-macos/state/rendered/*.png
           if-no-files-found: error
           retention-days: 7
+  desktop-preflight:
+    if: github.event_name == 'workflow_dispatch' && inputs.check == 'desktop'
+    runs-on: macos-26
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Inspect desktop prerequisites without accessing accounts
+        run: swift tests/macos_desktop_preflight.swift > "$RUNNER_TEMP/macos-desktop-preflight.json"
+      - name: Save only the prerequisite report
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: macos-desktop-preflight
+          path: ${{ runner.temp }}/macos-desktop-preflight.json
+          retention-days: 3
