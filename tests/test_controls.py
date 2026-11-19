@@ -425,7 +425,8 @@ class ControlsTest(unittest.TestCase):
         self.assertRaises(ValueError,commands.execute,['help','all'],remote=True)
         self.baseline()
         runtime.write_json('result-origins.json',[{'id':'anchor','text':'[작업]','origin':{'source':'codex','session_id':'thread'}}])
-        for body,quote,executed in (('Help','talkturn in',['help']),('톡턴 out','[작업]',None),('톡턴 원문','[작업]',None)):
+        for body,quote,executed in (('Help','talkturn in',['help']),('HELP','talkturn in',['help']),('help','talkturn in',['help']),
+                                    ('톡턴 out','[작업]',None),('톡턴 원문','[작업]',None)):
             message={'sender':'self','time':'오후 1:00','text':body,'is_photo':False,'is_file':False}
             isolated={'path':'crop.png','body':body,'quote_kind':'text','quote_text':quote}
             with patch.object(bridge,'native_read',side_effect=lambda:[copy.deepcopy(message)]), \

@@ -6,14 +6,14 @@
 
 Windows용 터미널 CLI입니다. Claude Code·Codex·Antigravity CLI(`agy`)의 작업 결과를 카카오톡 **나와의 채팅**에서 보고, 작업 제목 카드에 **답장**해 기존 작업을 이어갑니다.
 
-**0.1.1 알파 · Windows 개발자용.** 카카오 PC 화면과 각 CLI의 수신 연결에 의존합니다. Kakao 공식 제품이 아닙니다.
+**0.1.2 알파 · Windows 개발자용.** 카카오 PC 화면과 각 CLI의 수신 연결에 의존합니다. Kakao 공식 제품이 아닙니다.
 
 ## 할 수 있는 것
 
 - **결과 받기:** 체크한 작업이 끝나면 결과가 사진(또는 글)으로 카톡에 옵니다.
 - **답장으로 이어가기:** 작업 제목 카드나 결과에 답장하면 그 글이 원래 작업에 그대로 전달됩니다. 새 대화를 만들지 않습니다.
 - **질문에 답하기:** Claude의 질문·승인 요청이 별도 말풍선으로 오고, 그 말풍선에 답장해 답합니다.
-- **폰에서 관리:** 받을 작업 바꾸기, PC 화면 스크린샷, 남은 사용 한도 확인을 카톡에서 합니다.
+- **폰에서 확인:** PC 화면 스크린샷과 남은 사용 한도를 카톡에서 봅니다.
 
 ## 필요한 것
 
@@ -33,7 +33,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 TalkTurn을 설치하고 실행합니다.
 
 ```powershell
-uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.1/talkturn-0.1.1-py3-none-any.whl
+uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.2/talkturn-0.1.2-py3-none-any.whl
 talkturn
 ```
 
@@ -53,11 +53,9 @@ talkturn
 | 어디에 답장 | 보낼 말 | 하는 일 |
 |---|---|---|
 | 작업 제목 카드·결과 | 요청 내용 | 원래 작업에 전달 |
-| `talkturn in` 안내 | `help` | 사용법 보기 |
-| `talkturn in` 안내 | `세션` | 지금 받을 수 있는 작업과 코드 |
-| `talkturn in` 안내 | `체크 C-… X-… G-…` | 받을 작업을 이 코드들로 교체 |
+| `talkturn in` 안내 | `help` (대소문자 무관) | 사용법 보기 |
 | `talkturn in` 안내 | `화면` · `사용량` | PC 화면 스크린샷 · 남은 한도 |
-| `talkturn in` 안내 | `접수` · `원문` | 마지막 답장의 접수 확인 · 받은 결과를 글로 다시 받기 |
+| `talkturn in` 안내 | `원문` | 받은 결과를 글로 다시 받기 |
 | `talkturn in` 안내 | `out` | 연결 끊기 |
 | 질문 말풍선 | 번호 · `승인` · `거절` | Claude 질문·승인 요청에 답하기 |
 

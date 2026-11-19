@@ -70,7 +70,7 @@ talkturn
 [Releases](https://github.com/xodn-sell/talkturn/releases)의 wheel 주소로 바로 설치:
 
 ```powershell
-uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.1/talkturn-0.1.1-py3-none-any.whl
+uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.2/talkturn-0.1.2-py3-none-any.whl
 talkturn
 ```
 

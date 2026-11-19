@@ -38,7 +38,6 @@ class AgyUiTest(unittest.TestCase):
         self.assertEqual(commands.select_section('4'), 'agy')
         self.assertIn('3 전체', commands.SECTION_MENU)
         self.assertIn('G-…', commands.HELP)
-        self.assertIn('G-…', commands.PHONE_HELP)
 
     def test_agy_queries_use_the_agy_provider_without_changing_the_selected_session(self):
         original = row('codex', 1)
