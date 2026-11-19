@@ -15,7 +15,17 @@ from .providers import config_path, provider_config, replace_toml_root
 
 
 def process_running(pid):
-    if not isinstance(pid, int) or pid <= 0 or sys.platform != 'win32':
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if sys.platform == 'darwin':
+        try:
+            os.kill(pid, 0)
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        return True
+    if sys.platform != 'win32':
         return False
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
     kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -39,8 +49,11 @@ def worker_pid():
 
 
 def chat_windows():
+    if sys.platform == 'darwin':
+        from . import mac_kakao
+        return mac_kakao.chat_windows()
     if sys.platform != 'win32':
-        raise RuntimeError('현재 Kakao PC 연결은 Windows에서 지원됨.')
+        raise RuntimeError('현재 Kakao PC 연결은 Windows·macOS에서 지원됨.')
     import win32gui
     import win32process
     import win32api
@@ -73,6 +86,9 @@ def chat_windows():
 
 def kakao_running():
     """Check the process name without opening chat contents or changing focus."""
+    if sys.platform == 'darwin':
+        from . import mac_kakao
+        return mac_kakao.kakao_running()
     try:
         result=subprocess.run([str(Path(os.environ.get('SystemRoot','C:/Windows'))/'System32/tasklist.exe'),
             '/FI','IMAGENAME eq KakaoTalk.exe','/FO','CSV','/NH'],capture_output=True,timeout=3,creationflags=NO_WINDOW)
@@ -124,8 +140,8 @@ def connection_status():
         matching = [row for row in chat_windows() if row['hwnd'] == settings['window_id'] and row['pid'] == settings['process_id'] and row['title'] == settings['room_name']]
         if len(matching) != 1:
             return '재연결 필요 · 나와의 채팅 창을 열고 setup'
-    except RuntimeError:
-        return 'Windows 카카오톡 필요'
+    except RuntimeError as error:
+        return str(error) if sys.platform == 'darwin' else 'Windows 카카오톡 필요'
     receipt = read_json('connection.json', {})
     same = receipt.get('window_id') == settings['window_id'] and receipt.get('process_id') == settings['process_id']
     if receipt.get('verified') and same:
@@ -434,6 +450,8 @@ def install_question_hooks():
 
 
 def startup(enable):
+    if sys.platform == 'darwin':
+        return  # ponytail: login autostart would need its own permissions for the Python binary; run `talkturn start` after login
     import win32com.client
     folder = Path(os.environ['APPDATA'])/'Microsoft/Windows/Start Menu/Programs/Startup'
     link = folder/'TalkTurn replies.lnk'
@@ -498,7 +516,8 @@ def start(*, connect=True):
         try:
             with (ROOT/'bridge-stderr.log').open('ab') as log:
                 process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                           stderr=log, env=environment, creationflags=NO_WINDOW)
+                                           stderr=log, env=environment, creationflags=NO_WINDOW,
+                                           start_new_session=sys.platform!='win32')  # macOS: outlive the terminal
             deadline = time.monotonic()+5
             while time.monotonic()<deadline:
                 # Windows venv pythonw launchers can run the actual interpreter as a child PID.

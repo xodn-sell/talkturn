@@ -65,43 +65,47 @@ class KBDLL(ctypes.Structure):
 
 
 # Private library objects: 64-bit handles need exact prototypes, and other modules keep theirs.
-user32 = ctypes.WinDLL('user32', use_last_error=True)
-kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-gdi32 = ctypes.WinDLL('gdi32')
-LRESULT = ctypes.c_ssize_t
-HOOKPROC = ctypes.WINFUNCTYPE(LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
-user32.SetWindowsHookExW.argtypes = [ctypes.c_int, HOOKPROC, wintypes.HINSTANCE, wintypes.DWORD]
-user32.SetWindowsHookExW.restype = wintypes.HHOOK
-user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
-user32.CallNextHookEx.restype = LRESULT
-user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
-user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
-user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
-user32.SetTimer.argtypes = [wintypes.HWND, ctypes.c_size_t, wintypes.UINT, ctypes.c_void_p]
-user32.SetTimer.restype = ctypes.c_size_t
-user32.KillTimer.argtypes = [wintypes.HWND, ctypes.c_size_t]
-user32.GetAsyncKeyState.restype = ctypes.c_short
-user32.keybd_event.argtypes = [wintypes.BYTE, wintypes.BYTE, wintypes.DWORD, ctypes.c_size_t]
-user32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
-                                   ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                   wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
-user32.CreateWindowExW.restype = wintypes.HWND
-user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
-user32.SetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
-user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
-user32.DestroyWindow.argtypes = [wintypes.HWND]
-gdi32.CreateFontW.argtypes = [ctypes.c_int] * 13 + [wintypes.LPCWSTR]
-gdi32.CreateFontW.restype = ctypes.c_void_p
-kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
-kernel32.GetModuleHandleW.restype = wintypes.HMODULE
-kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
-kernel32.CreateMutexW.restype = wintypes.HANDLE
-kernel32.OpenMutexW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
-kernel32.OpenMutexW.restype = wintypes.HANDLE
-kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+if sys.platform == 'win32':
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    gdi32 = ctypes.WinDLL('gdi32')
+    LRESULT = ctypes.c_ssize_t
+    HOOKPROC = ctypes.WINFUNCTYPE(LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+    user32.SetWindowsHookExW.argtypes = [ctypes.c_int, HOOKPROC, wintypes.HINSTANCE, wintypes.DWORD]
+    user32.SetWindowsHookExW.restype = wintypes.HHOOK
+    user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+    user32.CallNextHookEx.restype = LRESULT
+    user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
+    user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
+    user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
+    user32.SetTimer.argtypes = [wintypes.HWND, ctypes.c_size_t, wintypes.UINT, ctypes.c_void_p]
+    user32.SetTimer.restype = ctypes.c_size_t
+    user32.KillTimer.argtypes = [wintypes.HWND, ctypes.c_size_t]
+    user32.GetAsyncKeyState.restype = ctypes.c_short
+    user32.keybd_event.argtypes = [wintypes.BYTE, wintypes.BYTE, wintypes.DWORD, ctypes.c_size_t]
+    user32.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+                                       ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                       wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+    user32.CreateWindowExW.restype = wintypes.HWND
+    user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    user32.SetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.DestroyWindow.argtypes = [wintypes.HWND]
+    gdi32.CreateFontW.argtypes = [ctypes.c_int] * 13 + [wintypes.LPCWSTR]
+    gdi32.CreateFontW.restype = ctypes.c_void_p
+    kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+    kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    kernel32.OpenMutexW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel32.OpenMutexW.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 
 
 def active():
+    if sys.platform == 'darwin':
+        from . import mac_kakao
+        return mac_kakao.lock_active()
     handle = kernel32.OpenMutexW(0x00100000, False, MUTEX)
     if handle:
         kernel32.CloseHandle(handle)
@@ -122,7 +126,8 @@ def engage():
         with (runtime.ROOT / 'bridge-stderr.log').open('ab') as log:
             subprocess.Popen([str(python if python.exists() else runtime.PYTHON), '-m', 'talkturn.mouse_lock', str(pid)],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log,
-                             env=dict(os.environ, TALKTURN_HOME=str(runtime.ROOT)), creationflags=runtime.NO_WINDOW)
+                             env=dict(os.environ, TALKTURN_HOME=str(runtime.ROOT)), creationflags=runtime.NO_WINDOW,
+                             **({'start_new_session': True} if sys.platform == 'darwin' else {}))
     return True
 
 
@@ -150,6 +155,9 @@ def _banner():
 
 
 def run(bridge_pid):
+    if sys.platform == 'darwin':
+        from . import mac_kakao
+        return mac_kakao.lock(bridge_pid)
     from .service import process_running
     ctypes.set_last_error(0)
     mutex = kernel32.CreateMutexW(None, False, MUTEX)

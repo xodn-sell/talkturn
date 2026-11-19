@@ -1,6 +1,7 @@
 """One command vocabulary shared by terminal and paired Kakao self-chat."""
 import json
 import re
+import sys
 from datetime import datetime
 from . import providers
 from .runtime import ROOT, read_json, write_json, locked
@@ -149,6 +150,11 @@ def parse(text, *, remote=False):
 
 def screen_images():
     """One PNG per monitor: a merged multi-monitor grab is unreadable once Kakao shrinks it."""
+    if sys.platform=='darwin':
+        for stale in ROOT.glob('screen-*.png'):
+            stale.unlink()
+        from . import mac_kakao
+        return mac_kakao.screen_images(ROOT)
     import ctypes
     import win32api
     from PIL import ImageGrab

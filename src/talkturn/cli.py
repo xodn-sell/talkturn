@@ -31,7 +31,7 @@ def needs_relay_choice(settings):
 
 
 def confirm_connection():
-    if os.name!='nt' or not sys.stdin.isatty():
+    if os.name!='nt' and sys.platform!='darwin' or not sys.stdin.isatty():
         return True
     from .mouse_lock import HOLD,active
     if active():
@@ -141,6 +141,11 @@ def setup(args, *, commit_selection=None):
 
 
 def dispatch(parts):
+    if parts[:1]==['mac-report'] and parts[1:] in ([],['--probe']):
+        if sys.platform!='darwin':
+            return 'mac-report는 macOS 전용입니다.'
+        from .mac_kakao import report
+        return '맥 점검 파일: '+str(report('--probe' in parts))
     if parts==['setup-agy']:
         executable('agy')
         from .agy_hooks import install
@@ -369,7 +374,7 @@ def main():
         if args in (['--version'],['-V']):
             console.print(__version__)
         elif args in (['--help'],['-h']):
-            console.print(HELP+'\n\n터미널 전용: connect [claude|codex|agy] / setup-agy / setup [--self-chat 이름] [--relay-model luna|haiku] [--computer-name 이름] [--section claude|chatgpt|agy|all] / account-add claude|codex / start / stop / startup on|off / update [버전] / uninstall / codex / claude / agy [인수]\nAGY 별칭: antigravity / 안티그래비티. AGY 계정 추가·전환은 지원하지 않습니다.',markup=False)
+            console.print(HELP+'\n\n터미널 전용: connect [claude|codex|agy] / setup-agy / setup [--self-chat 이름] [--relay-model luna|haiku] [--computer-name 이름] [--section claude|chatgpt|agy|all] / account-add claude|codex / start / stop / startup on|off / mac-report [--probe] / update [버전] / uninstall / codex / claude / agy [인수]\nAGY 별칭: antigravity / 안티그래비티. AGY 계정 추가·전환은 지원하지 않습니다.',markup=False)
         elif not args:
             if sys.stdin.isatty():
                 interactive()

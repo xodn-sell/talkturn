@@ -15,7 +15,7 @@ from . import runtime as notify
 from .plain_delivery import call_luna,native_failure_message
 from ._kakao.parser import outgoing_texts
 from .reply_crop import isolate_reply,message_kind,plainly_other
-from .runtime import ROOT, PYTHON, NO_WINDOW, executable, module_command, read_json, write_json
+from .runtime import ROOT, PYTHON, NO_WINDOW, SEND_MODULE, CAPTURE, executable, module_command, read_json, write_json
 
 
 
@@ -37,7 +37,7 @@ def recent_message(message):
 
 def native_read():
     with notify.locked():
-        result = subprocess.run(module_command('native_send'),
+        result = subprocess.run(module_command(SEND_MODULE),
             input=json.dumps({'read_only':True}),encoding='utf-8',capture_output=True,
             timeout=30,creationflags=NO_WINDOW)
         if result.returncode:
@@ -46,7 +46,7 @@ def native_read():
 
 
 def screenshot():
-    result = subprocess.run(module_command('capture_self'),capture_output=True,
+    result = subprocess.run(module_command(*CAPTURE),capture_output=True,
                             timeout=15,creationflags=NO_WINDOW)
     if result.returncode:
         raise RuntimeError('Cannot inspect the reply quote')
@@ -579,6 +579,9 @@ def poll_once(require_enabled=False):
 
 
 def idle_seconds():
+    if sys.platform=='darwin':
+        from . import mac_kakao
+        return mac_kakao.idle_seconds()
     class LastInput(ctypes.Structure):
         _fields_=[('cbSize',wintypes.UINT),('dwTime',wintypes.DWORD)]
     state=LastInput(ctypes.sizeof(LastInput),0)
@@ -588,23 +591,38 @@ def idle_seconds():
 
 
 def main():
-    kernel=ctypes.WinDLL('kernel32',use_last_error=True)
-    kernel.CreateMutexW.argtypes=[ctypes.c_void_p,wintypes.BOOL,wintypes.LPCWSTR]
-    kernel.CreateMutexW.restype=wintypes.HANDLE
-    mutex=kernel.CreateMutexW(None,False,'Local\\talkturn-'+hashlib.sha256(str(ROOT).encode()).hexdigest()[:20])
-    if ctypes.get_last_error()==183:
-        print(json.dumps({'already_running':True}))
-        sys.exit(0)
+    if sys.platform=='darwin':
+        import fcntl
+        ROOT.mkdir(parents=True,exist_ok=True)
+        mutex=open(ROOT/'reply-bridge.lock','a+b')
+        try:
+            fcntl.flock(mutex,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except OSError:
+            print(json.dumps({'already_running':True}))
+            sys.exit(0)
+    else:
+        kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.CreateMutexW.argtypes=[ctypes.c_void_p,wintypes.BOOL,wintypes.LPCWSTR]
+        kernel.CreateMutexW.restype=wintypes.HANDLE
+        mutex=kernel.CreateMutexW(None,False,'Local\\talkturn-'+hashlib.sha256(str(ROOT).encode()).hexdigest()[:20])
+        if ctypes.get_last_error()==183:
+            print(json.dumps({'already_running':True}))
+            sys.exit(0)
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--once',action='store_true')
     args=parser.parse_args()
     if args.once:
         print(json.dumps(poll_once(),ensure_ascii=True))
     else:
-        from .chat_events import ChatWindowChanged
         from .plain_delivery import pending_replies
-        import win32gui
-        import win32process
+        if sys.platform=='darwin':
+            from . import mac_kakao
+            class ChatWindowChanged(RuntimeError):  # chat_events is a Win32 module
+                pass
+        else:
+            from .chat_events import ChatWindowChanged
+            import win32gui
+            import win32process
         (ROOT/'reply-bridge.pid').write_text(str(os.getpid()),encoding='utf-8')
         try:
             settings=read_json('delivery.json',{})
@@ -618,7 +636,8 @@ def main():
                     if tuple(current.get(key) for key in ('window_id','process_id','room_name'))!=binding:
                         raise ChatWindowChanged('카톡 연결 대상이 변경됐습니다.')
                     try:
-                        valid=(win32gui.IsWindow(binding[0])
+                        valid=(mac_kakao.window_valid(*binding) if sys.platform=='darwin' else
+                               win32gui.IsWindow(binding[0])
                                and win32process.GetWindowThreadProcessId(binding[0])[1]==binding[1]
                                and win32gui.GetWindowText(binding[0])==binding[2])
                     except Exception:
@@ -650,7 +669,7 @@ def main():
                        'reason':str(error) if isinstance(error,ChatWindowChanged) else '수신 확인을 중지했습니다.'})
         finally:
             (ROOT/'reply-bridge.pid').unlink(missing_ok=True)
-            kernel.CloseHandle(mutex)
+            mutex.close() if sys.platform=='darwin' else kernel.CloseHandle(mutex)
 
 
 if __name__=='__main__':

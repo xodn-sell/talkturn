@@ -10,7 +10,7 @@ import mimetypes
 import time
 from urllib.parse import unquote, urlsplit
 
-from .runtime import ROOT, PYTHON, NO_WINDOW, executable, module_command, read_json, write_json
+from .runtime import ROOT, PYTHON, NO_WINDOW, SEND_MODULE, executable, module_command, read_json, write_json
 from ._kakao.parser import has_export_structure, outgoing_texts
 
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
@@ -373,7 +373,7 @@ def deliver(text: str, event_key: str = '', cwd: str = '', images: list[str] | N
         outgoing += sorted(outgoing_texts(prepared))
         write_json('outgoing-texts.json', outgoing[-1000:])
         request = {'text':prepared,'images':attachments}
-        result = subprocess.run(module_command('native_send'),
+        result = subprocess.run(module_command(SEND_MODULE),
                                 input=json.dumps(request, ensure_ascii=False), encoding='utf-8',
                                 capture_output=True, timeout=max(90, 15*len(attachments)+30),
                                 creationflags=NO_WINDOW)

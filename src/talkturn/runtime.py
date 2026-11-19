@@ -14,6 +14,8 @@ import time
 ROOT = Path(os.environ.get('TALKTURN_HOME') or os.environ.get('TOKTURN_HOME') or Path(os.environ.get('LOCALAPPDATA', Path.home() / '.local/share')) / 'TalkTurn').expanduser().resolve()
 PYTHON = Path(sys.executable)
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+SEND_MODULE = 'mac_kakao' if sys.platform == 'darwin' else 'native_send'
+CAPTURE = ('mac_kakao', 'capture') if sys.platform == 'darwin' else ('capture_self',)
 
 
 def read_json(name, default=None):

@@ -84,3 +84,46 @@ jobs:
             ${{ runner.temp }}/talkturn-macos/state/rendered/*.png
           if-no-files-found: error
           retention-days: 7
+
+  desktop:
+    name: Desktop layer (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            python: '3.13'
+          - os: macos-15-intel
+            python: '3.11'
+    env:
+      TALKTURN_FONT: /System/Library/Fonts/AppleSDGothicNeo.ttc
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build and install the wheel
+        run: |
+          python -m pip install build
+          python -m build
+          python -m pip install dist/*.whl
+      - name: Isolate temporary state
+        run: |
+          mkdir -p "$RUNNER_TEMP/talkturn-macos/"{state,codex,claude,profile}
+          printf '%s\n' \
+            "TALKTURN_HOME=$RUNNER_TEMP/talkturn-macos/state" \
+            "CODEX_HOME=$RUNNER_TEMP/talkturn-macos/codex" \
+            "CLAUDE_CONFIG_DIR=$RUNNER_TEMP/talkturn-macos/claude" \
+            "TALKTURN_AGY_BIN=$RUNNER_TEMP/talkturn-macos/missing-agy" >> "$GITHUB_ENV"
+      - name: Run the macOS desktop layer against TextEdit
+        env:
+          HOME: ${{ runner.temp }}/talkturn-macos/profile
+          PYTHONPATH: ${{ github.workspace }}/tests
+        run: |
+          mkdir -p "$HOME" "$TALKTURN_HOME" "$CODEX_HOME" "$CLAUDE_CONFIG_DIR"
+          python -m unittest -v test_mac_kakao

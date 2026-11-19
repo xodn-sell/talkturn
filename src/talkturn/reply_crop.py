@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 
 from PIL import Image, ImageChops, ImageDraw
@@ -30,6 +31,9 @@ def _normalize(text):
 
 
 def _ocr(image_path):
+    if sys.platform == 'darwin':
+        from . import mac_kakao
+        return mac_kakao.ocr(image_path)
     powershell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
     with tempfile.TemporaryDirectory(prefix='talkturn-local-ocr-') as temporary:
         with Image.open(image_path) as source:
