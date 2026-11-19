@@ -10,13 +10,9 @@ import unittest
 DARWIN = sys.platform == 'darwin'
 if DARWIN:
     from PIL import Image, ImageDraw, ImageFont
-    from AppKit import NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeString
+    from AppKit import (NSApplicationActivateIgnoringOtherApps, NSPasteboard, NSPasteboardTypePNG,
+                        NSPasteboardTypeString, NSRunningApplication)
     from talkturn import mac_kakao
-
-
-def osascript(*lines):
-    return subprocess.run(['osascript', *[arg for line in lines for arg in ('-e', line)]],
-                          capture_output=True, text=True, timeout=30)
 
 
 def wait_for(check, seconds):
@@ -25,26 +21,33 @@ def wait_for(check, seconds):
         value = check()
         if value:
             return value
-        time.sleep(0.1)
+        mac_kakao._sleep(0.1)  # pump the run loop so NSWorkspace sees app switches
     return check()
 
 
 @unittest.skipUnless(DARWIN, 'macOS only')
 class MacKakaoTest(unittest.TestCase):
     editor = False
+    folder = None
 
     @classmethod
     def setUpClass(cls):
         # Never touch a TextEdit the developer already has open.
         if subprocess.run(['pgrep', '-x', 'TextEdit'], capture_output=True).returncode == 0:
             return
-        osascript('tell application "TextEdit" to activate', 'tell application "TextEdit" to make new document')
-        cls.editor = True
+        cls.folder = tempfile.TemporaryDirectory()
+        document = Path(cls.folder.name) / 'talkturn-standin.txt'
+        document.write_text('', encoding='utf-8')
+        # `open` goes through LaunchServices: no Automation consent prompt (osascript hung on CI waiting for one)
+        cls.editor = subprocess.run(['open', '-a', 'TextEdit', str(document)], capture_output=True, timeout=30).returncode == 0
 
     @classmethod
     def tearDownClass(cls):
         if cls.editor:
-            osascript('tell application "TextEdit" to close every document saving no', 'tell application "TextEdit" to quit')
+            for app in NSRunningApplication.runningApplicationsWithBundleIdentifier_('com.apple.TextEdit'):
+                app.forceTerminate()  # we launched it for a temp file only: no save prompt to answer
+        if cls.folder:
+            cls.folder.cleanup()
 
     def textedit(self):
         if not self.editor:
@@ -107,7 +110,8 @@ class MacKakaoTest(unittest.TestCase):
         original = mac_kakao.snapshot()
         try:
             mac_kakao._set_text('톡턴 붙여넣기 확인')
-            subprocess.run(['osascript', '-e', 'tell application "TextEdit" to activate'], timeout=10)
+            NSRunningApplication.runningApplicationWithProcessIdentifier_(window['pid']).activateWithOptions_(
+                NSApplicationActivateIgnoringOtherApps)
             mac_kakao.AXUIElementSetAttributeValue(edit, 'AXFocused', True)
             if not wait_for(lambda: mac_kakao._frontmost_pid() == window['pid'], 3):
                 self.skipTest('TextEdit could not be brought to the front')
