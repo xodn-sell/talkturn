@@ -20,12 +20,12 @@ class ResultFormatTest(unittest.TestCase):
 
     def test_claude_heading_prefers_current_title_over_stale_cached_name(self):
         session = '11111111-1111-4111-8111-111111111111'
-        rows = [{'provider': 'claude', 'session_id': session, 'name': 'kimtaewoo-e6'}]
+        rows = [{'provider': 'claude', 'session_id': session, 'name': 'claude-e6'}]
         with patch.object(result_format, 'read_json', return_value={'rows': rows}), \
                 patch('talkturn.sessions.claude_title', return_value='원래 제목') as title:
             self.assertEqual(result_format.session_heading({'source': 'claude', 'session_id': session}), '[원래 제목]')
             title.return_value = ''
-            self.assertEqual(result_format.session_heading({'source': 'claude', 'session_id': session}), '[kimtaewoo-e6]')
+            self.assertEqual(result_format.session_heading({'source': 'claude', 'session_id': session}), '[claude-e6]')
 
     def test_heading_removes_controls_line_breaks_and_caps_length(self):
         with patch.object(result_format, 'read_json', return_value={}):
