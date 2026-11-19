@@ -26,14 +26,15 @@ def main():
                                 encoding='utf-8', input='', timeout=15)
         assert result.returncode == 0 and expected in result.stdout, (args, result.returncode, result.stderr)
         checks.append({'args': args, 'exit': result.returncode})
-    # A successful core smoke must not be mistaken for native macOS Kakao support.
+    # No Kakao on the runner: setup must refuse cleanly (missing permission or window) and start nothing.
     result = subprocess.run([sys.executable, '-m', 'talkturn', 'setup', '--self-chat', 'Synthetic self chat',
                              '--relay-model', 'luna', '--no-startup'], input='', capture_output=True,
                             encoding='utf-8', timeout=15)
-    assert result.returncode == 1 and 'Windows' in result.stdout and 'Traceback' not in result.stderr
+    assert result.returncode == 1 and ('맥 권한 필요' in result.stdout or '채팅 창' in result.stdout), (result.stdout, result.stderr)
+    assert 'Traceback' not in result.stderr
     assert not (runtime.ROOT / 'enabled').exists()
     assert not (runtime.ROOT / 'reply-bridge.pid').exists()
-    checks.append({'args': ['setup'], 'exit': result.returncode, 'native_ui_unsupported': True})
+    checks.append({'args': ['setup'], 'exit': result.returncode, 'no_kakao_refused': True})
     text = '## 한글 결과 이미지\nmacOS 공통 기능 검증입니다.\n**강조 문장**과 `literal code`를 표시합니다.\n\n| 항목 | 결과 |\n| --- | --- |\n| 한글 | 정상 표시 |\n| 페이지 | 크기 확인 |'
     paths = render.text_images(text, 'macos-core-smoke', heading='[TalkTurn macOS 공통 기능]')
     dimensions = []

@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import sys
 import unicodedata
 from PIL import Image, ImageDraw, ImageFont
 from .runtime import ROOT
@@ -89,7 +90,8 @@ def column_widths(natural, total):
 
 def text_images(text, key, *, heading=''):
     font_dir = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts'
-    font_path = Path(os.environ.get('TALKTURN_FONT') or os.environ.get('TOKTURN_FONT') or font_dir / 'malgun.ttf')
+    default = '/System/Library/Fonts/AppleSDGothicNeo.ttc' if sys.platform == 'darwin' else font_dir / 'malgun.ttf'
+    font_path = Path(os.environ.get('TALKTURN_FONT') or os.environ.get('TOKTURN_FONT') or default)
     if not font_path.is_file():
         raise RuntimeError('한국어 글꼴 없음. TALKTURN_FONT 설정 필요.')
     body = ImageFont.truetype(str(font_path), 42)

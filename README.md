@@ -6,7 +6,7 @@
 
 Windows용 터미널 CLI입니다. Claude Code·Codex·Antigravity CLI(`agy`)의 작업 결과를 카카오톡 **나와의 채팅**에서 보고, 작업 제목 카드에 **답장**해 기존 작업을 이어갑니다.
 
-**0.1.4 알파 · Windows 개발자용.** 카카오 PC 화면과 각 CLI의 수신 연결에 의존합니다. Kakao 공식 제품이 아닙니다.
+**0.1.5 알파 · Windows 개발자용.** 카카오 PC 화면과 각 CLI의 수신 연결에 의존합니다. Kakao 공식 제품이 아닙니다. macOS 카톡 연결은 **실험판**입니다. 실제 Mac 카카오톡에서는 아직 확인하지 않았습니다. [Mac 실험판](#mac-실험판)을 먼저 읽어 주세요.
 
 ## 할 수 있는 것
 
@@ -33,7 +33,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 TalkTurn을 설치하고 실행합니다.
 
 ```powershell
-uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.4/talkturn-0.1.4-py3-none-any.whl
+uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.5/talkturn-0.1.5-py3-none-any.whl
 talkturn
 ```
 
@@ -47,6 +47,30 @@ talkturn
 4. 휴대폰에 온 **[작업 제목]** 카드에 “로그인 실패도 확인해 줘”처럼 답장하면 그 작업에 전달됩니다.
 
 연결 중에는 PC 마우스가 잠깁니다. **Esc를 약 2.5초 누르면** 잠금이 풀리고 연결이 끝납니다. Claude Code·Codex의 결과 알림 훅은 첫 연결 때, AGY 훅은 AGY 작업을 체크해 연결할 때 자동으로 등록됩니다.
+
+## Mac 실험판
+
+Mac용 카카오톡 연결 코드를 넣었지만 **실제 Mac 카카오톡에서는 아직 확인하지 않았습니다.** 자동 시험은 GitHub의 Mac 환경에서 카카오톡 대신 텍스트 편집기로만 했습니다. 시험해 줄 분을 찾고 있습니다.
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.5/talkturn-0.1.5-py3-none-any.whl
+talkturn
+```
+
+1. Mac 카카오톡에서 **나와의 채팅**을 별도 창으로 엽니다.
+2. `talkturn`을 실행해 Windows와 같은 순서로 연결합니다.
+3. 시스템 설정이 열리면 **개인정보 보호 및 보안**에서 `talkturn`을 실행한 터미널 앱(터미널·iTerm 등)의 **손쉬운 사용**과 **화면 기록**을 켜고, 터미널을 완전히 종료한 뒤 다시 엽니다.
+
+Mac에서는 로그인 때 자동으로 켜지지 않습니다. 재부팅 뒤에는 `talkturn start`를 실행하세요. 마우스 잠금은 클릭과 스크롤을 막지만, 커서가 움직이는 것까지 막지는 못할 수 있습니다.
+
+안 되면 터미널에서 아래 명령을 실행하고, 만들어진 `mac-report.json`을 [이슈](https://github.com/xodn-sell/talkturn/issues)에 첨부해 주세요. macOS·카카오톡 버전, 권한 상태, 카카오톡 창 구조(역할·위치만), 오류 단계가 들어 있습니다. **대화 내용과 채팅방 이름은 들어가지 않습니다.**
+
+```sh
+talkturn mac-report --probe
+```
+
+`--probe`는 나와의 채팅을 한 번 복사해 보고 복사된 글자 수만 기록합니다. 카카오톡 창이 잠깐 앞으로 나올 수 있습니다.
 
 ## 카톡에서 쓰기
 

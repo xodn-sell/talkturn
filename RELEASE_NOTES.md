@@ -1,3 +1,15 @@
+# TalkTurn 0.1.5 Mac 실험판 릴리스 노트
+
+2026-11-20. Mac 카카오톡 연결 코드를 실험판으로 넣었습니다. Windows 동작은 바뀌지 않았습니다.
+
+- **Mac 카톡 연결(실험판):** Mac에서도 `talkturn`으로 나와의 채팅을 연결하고, 결과 받기·답장 읽기·화면 스크린샷·마우스 잠금을 Windows와 같은 순서로 실행합니다. macOS의 손쉬운 사용·화면 기록 권한과 Vision 글자 인식을 씁니다. **실제 Mac 카카오톡에서는 아직 확인하지 않았습니다.**
+- **`talkturn mac-report`:** Mac에서 막혔을 때 보고용 파일(`mac-report.json`)을 만듭니다. 버전·권한·카카오톡 창 구조(역할·위치만)·오류 단계만 들어가고 대화 내용과 채팅방 이름은 들어가지 않습니다. `--probe`를 붙이면 메시지 목록 복사가 되는지도 글자 수로만 기록합니다.
+- **Mac 기본 글꼴:** Mac에서는 `TALKTURN_FONT`를 지정하지 않아도 결과 이미지에 AppleSDGothicNeo를 씁니다.
+
+Mac 자동 시험은 GitHub Mac 환경에서 카카오톡 대신 텍스트 편집기로 했습니다. Mac에서는 로그인 때 자동으로 켜지지 않으므로 재부팅 뒤 `talkturn start`를 실행하세요. 시험해 보고 [이슈](https://github.com/xodn-sell/talkturn/issues)에 `mac-report.json`을 올려 주시면 그 결과로 고칩니다.
+
+0.1.1 이상을 쓰고 있다면 `talkturn update 0.1.5`로 바꿀 수 있습니다.
+
 # TalkTurn 0.1.4 Windows 알파 릴리스 노트
 
 2026-11-20. ccswap 없이 Claude 사용 한도를 보여 주고, Codex 질문에도 카톡으로 답할 수 있게 했습니다.
