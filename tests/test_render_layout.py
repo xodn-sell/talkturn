@@ -110,6 +110,15 @@ class RenderLayoutTest(unittest.TestCase):
         pages = {id(item[0]) for item in calls if item[3].size == 34}
         self.assertEqual(len(pages), 1)
 
+    def test_short_table_columns_stay_narrow_and_long_ones_take_the_rest(self):
+        self.assertEqual(render.column_widths([100, 200], 600), [100, 500])
+        widths = render.column_widths([80, 900, 900], 952)
+        self.assertEqual(widths[0], 80)
+        self.assertAlmostEqual(sum(widths), 952)
+        calls, _ = self.capture('|번호|설명|\n|---|---|\n|1|' + '아주 긴 설명 문장 ' * 12 + '|')
+        starts = sorted({x for _, (x, _), _, font in calls if font.size == 34})
+        self.assertLess(starts[1] - starts[0], 200)  # the number column no longer takes half the width
+
     def test_heading_stays_with_following_content_including_blank_line(self):
         for count in (15, 16, 17, 18, 19):
             for body in ('이어질 본문', '```python\nprint(1)\nprint(2)\n```'):

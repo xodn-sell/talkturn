@@ -316,7 +316,7 @@ def owned_hook(command, module=None):
     renamed={'tokturn.notify':'talkturn.notify','tokturn.questions':'talkturn.questions'}
     if len(parts)>=3 and parts[1]=='-m':
         actual=renamed.get(parts[2],parts[2])
-        if actual in ('talkturn.notify','talkturn.questions'):
+        if actual in ('talkturn.notify','talkturn.questions','talkturn.statusline'):
             return module is None or actual==renamed.get(module,module)
     return (module in (None,'talkturn.notify') and len(parts)>=2
             and parts[1].replace('\\','/').endswith('/kakao-completion/notify.py'))
@@ -331,6 +331,34 @@ def remove_own_stop_hooks(config):
         if group['hooks']:
             preserved.append(group)
     return preserved
+
+
+def git_bash():
+    """Claude Code runs status lines in Git Bash when it finds one, otherwise in PowerShell."""
+    if os.name != 'nt':
+        return True
+    if os.environ.get('CLAUDE_CODE_GIT_BASH_PATH'):
+        return Path(os.environ['CLAUDE_CODE_GIT_BASH_PATH']).is_file()
+    git = shutil.which('git')
+    return bool(git) and any((parent / 'bin/bash.exe').is_file() for parent in Path(git).parents[1:3])
+
+
+def wrap_statusline(data):
+    """Put the usage recorder in front of the user's status line; the shell pipes the same JSON on."""
+    current = data.get('statusLine')
+    if isinstance(current, dict) and owned_hook(current.get('command', '')):
+        current = read_json('previous-statusline.json')
+    python, home = str(PYTHON).replace('\\', '/'), str(ROOT).replace('\\', '/')
+    previous = current.get('command') if isinstance(current, dict) and current.get('type') == 'command' else None
+    # ponytail: Claude Code runs this in Git Bash or PowerShell. A spaced interpreter path or a compound
+    # previous command has no form valid in both, and a PowerShell 5.1 pipe prefixes a BOM the next status
+    # line cannot parse, so those keep the user's status line as is (usage falls back to ccswap).
+    if ' ' in python or current is not None and (not isinstance(previous, str) or not git_bash()
+                                                  or any(token in previous for token in (';', '&&', '||', '\n'))):
+        return
+    write_json('previous-statusline.json', current)
+    ours = f'{python} -m talkturn.statusline --home "{home}"'
+    data['statusLine'] = {**current, 'command': f'{ours} --pass | {previous}'} if current else {'type': 'command', 'command': ours}
 
 
 def install_hooks():
@@ -355,6 +383,7 @@ def install_hooks():
         command = {'command':argv[0],'args':argv[1:]}
         groups.append({'hooks':[{'type':'command',**command,'async':True,'timeout':300}]})
         data.setdefault('hooks', {})['Stop'] = groups
+        wrap_statusline(data)
         updated = replace_toml_root(codex_text, 'notify', new_notify)
         for provider, original in [('claude',claude_text),('codex',codex_text)]:
             atomic_write(ROOT/'backups'/f'{provider}-hooks-{time.time_ns()}.bak', original)
@@ -514,10 +543,19 @@ def uninstall():
     with locked('settings.lock'):
         path = config_path('claude')
         data = provider_config('claude')
+        line = data.get('statusLine')
+        owned_line = isinstance(line, dict) and owned_hook(line.get('command', ''))
+        if owned_line:
+            previous = read_json('previous-statusline.json')
+            if previous:
+                data['statusLine'] = previous
+            else:
+                data.pop('statusLine')
         if 'hooks' in data:
             for event,groups in data['hooks'].items():
                 data['hooks'][event]=[{**group,'hooks':[hook for hook in group.get('hooks',[]) if not owned_hook(hook)]} for group in groups]
                 data['hooks'][event]=[group for group in data['hooks'][event] if group['hooks']]
+        if 'hooks' in data or owned_line:
             atomic_write(path,json.dumps(data,ensure_ascii=False,indent=2)+'\n')
         path = config_path('codex')
         current = provider_config('codex')

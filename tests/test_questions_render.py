@@ -93,8 +93,10 @@ class QuestionsAndRenderTest(unittest.TestCase):
         codex=questions.prepare('codex',{'hook_event_name':'PreToolUse','tool_name':'request_user_input',
                                         'tool_input':{'questions':[{'question':'Continue?'}]}})
         self.save(codex)
-        self.assertTrue(questions.describe(codex).startswith('알림 전용'))
-        with self.assertRaises(ValueError):questions.answer(codex['id'],'yes')
+        self.assertTrue(questions.describe(codex).startswith('질문 Q'))
+        with patch('talkturn.codex_rpc.CodexQuestionAnswerer.__enter__',side_effect=RuntimeError('no shared server')), \
+             self.assertRaisesRegex(ValueError,'PC의 원래 창'):
+            questions.answer(codex['id'],'yes')
         for kind in ('session_anchor','result'):
             with patch.object(reply_bridge,'executable',return_value='synthetic-codex.exe'), \
                  patch.object(reply_bridge.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'{}','')), \
@@ -209,17 +211,36 @@ class QuestionsAndRenderTest(unittest.TestCase):
         questions.answer(incomplete['id'],'거절')
         self.assertEqual(runtime.read_json('questions.json')[0]['response']['hookSpecificOutput']['decision']['behavior'],'deny')
 
-    def test_expiration_never_approves_and_codex_question_is_notice_only(self):
+    def test_expiration_never_approves_and_codex_question_answers_through_shared_server(self):
         record=questions.prepare('claude',{'hook_event_name':'PermissionRequest','tool_input':{'command':'echo test'}})
         record['expires_at']=time.time()-1
         self.save(record)
         with self.assertRaises(questions.AnswerRejected):
             questions.answer(record['id'],'승인')
-        codex=questions.prepare('codex',{'hook_event_name':'PreToolUse','tool_name':'request_user_input','tool_input':{'questions':[{'question':'진행?'}]}})
+        shown=[{'id':'pick','question':'진행?','options':[{'label':'예','description':''},{'label':'아니요','description':''}]}]
+        server=[dict(shown[0],isOther=False)]
+        sent=[]
+        class Answerer:
+            def __enter__(self):return self
+            def __exit__(self,*_):pass
+            def answer(self,thread_id,choose):
+                sent.append((thread_id,choose(server)));return True
+        codex=questions.prepare('codex',{'hook_event_name':'PreToolUse','tool_name':'request_user_input',
+                                        'session_id':'codex-thread','tool_input':{'questions':shown}})
         self.save(codex)
-        with self.assertRaises(ValueError):
-            questions.answer(codex['id'],'네')
-        self.assertIn('알림 전용',questions.describe(codex))
+        self.assertIn('번호나 답을 적어 답장',questions.describe(codex))
+        with patch('talkturn.codex_rpc.CodexQuestionAnswerer',Answerer):
+            for text,error in (('직접 쓴 답','선택지 번호'),('3','선택지 번호')):
+                with self.assertRaisesRegex(questions.AnswerRejected,error):questions.answer(codex['id'],text)
+            server[0]=dict(shown[0],question='다른 질문?')
+            with self.assertRaisesRegex(questions.AnswerRejected,'카드와 달라요'):questions.answer(codex['id'],'1')
+            server[0]=dict(shown[0],isSecret=True)
+            with self.assertRaisesRegex(questions.AnswerRejected,'비밀 입력'):questions.answer(codex['id'],'1')
+            server[0]=dict(shown[0],isOther=True)
+            questions.answer(codex['id'],'2')
+        self.assertEqual(sent,[('codex-thread',{'pick':{'answers':['아니요']}})])
+        self.assertEqual(runtime.read_json('questions.json')[-1]['status'],'answered')
+        with self.assertRaises(questions.AnswerRejected):questions.answer(codex['id'],'1')
 
     def test_hook_wait_returns_only_explicit_response(self):
         (self.root/'enabled').touch(); (self.root/'reply-enabled').touch()

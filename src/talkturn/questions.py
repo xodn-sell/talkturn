@@ -19,10 +19,6 @@ def pending():
     return [item for item in read_json('questions.json',[]) if item.get('status')=='waiting' and item['expires_at']>time.time()]
 
 
-def actionable(record):
-    return record.get('kind')=='permission' or record.get('kind')=='question' and record.get('provider')=='claude'
-
-
 def quoted_request_id(text):
     """Only a complete ID on the question card's first line identifies a request."""
     first=text.strip().splitlines()[0] if isinstance(text,str) and text.strip() else ''
@@ -36,7 +32,7 @@ def describe(record):
     tool=payload.get('tool_input')
     tool=tool if isinstance(tool,dict) else {}
     heading=session_heading({'source':record['provider'],'session_id':payload.get('session_id')})
-    lines=[f"질문 {record['id']}" if actionable(record) else '알림 전용 · 원래 Codex 창에서 응답']
+    lines=[f"질문 {record['id']}"]
     if heading:lines.append(heading)
     settings=read_json('delivery.json',{})
     chat_replies=settings.get('reply_mode')!='manual' and settings.get('reply_routing_enabled') is not False
@@ -48,9 +44,7 @@ def describe(record):
                 label=option.get('label','') if isinstance(option,dict) else str(option)
                 description=option.get('description','') if isinstance(option,dict) else ''
                 lines.append(f'   {index}) {label}' + (f' — {description}' if description else ''))
-        if record['provider']!='claude':
-            lines.append('이 Codex 질문은 알림 전용. 선택·응답은 원래 창에서 진행.')
-        elif not chat_replies:
+        if not chat_replies:
             lines.append('카톡 답장이 꺼져 있어요. PC의 원래 작업 창에서 답하세요.')
         else:
             lines.append('이 말풍선에 선택지 번호나 답을 적어 답장하세요.' if any(q.get('options') for q in questions)
@@ -98,6 +92,61 @@ def prepare(provider,payload):
     return record
 
 
+def _values(questions,text):
+    """One answer per question, in order; option numbers become their labels."""
+    if not isinstance(text,(str,list)) or isinstance(text,list) and any(not isinstance(value,str) for value in text):
+        raise AnswerRejected('질문별 답변이 필요합니다.')
+    values=[value.strip() for value in (text if isinstance(text,list) else text.split(';'))]
+    if len(values)!=len(questions) or any(not value for value in values):
+        raise AnswerRejected('한 가지 답을 적어 주세요.' if len(questions)==1 else
+                             f'질문 순서대로 답 {len(questions)}개를 쓰고 답 사이에 세미콜론(;)을 넣으세요.')
+    result=[]
+    for question,value in zip(questions,values):
+        options=question.get('options') or []
+        if options and re.fullmatch(r'\d+(?:,\d+)*',value):
+            indexes=[int(x)-1 for x in value.split(',')]
+            if any(index<0 or index>=len(options) for index in indexes) or len(indexes)>1 and not question.get('multiSelect'):
+                raise AnswerRejected('질문에 표시된 선택지 번호를 입력하세요. 여러 번호는 복수 선택 질문에서만 쓸 수 있어요.')
+            value=', '.join(options[index]['label'] if isinstance(options[index],dict) else str(options[index]) for index in indexes)
+        result.append(value)
+    return result
+
+
+def _codex_choice(record,text):
+    """Build Codex answers only for the exact question shown on the card."""
+    shown=[question.get('question') for question in record['payload'].get('tool_input',{}).get('questions',[])]
+    def choose(questions):
+        if [question.get('question') for question in questions]!=shown:
+            raise AnswerRejected('PC의 Codex 질문이 카드와 달라요. 원래 창에서 확인하세요.')
+        if any(question.get('isSecret') for question in questions):
+            raise AnswerRejected('비밀 입력 질문은 PC의 원래 창에서 답하세요.')
+        values=_values(questions,text)
+        for question,value in zip(questions,values):
+            labels=[option.get('label') for option in question.get('options') or []]
+            if labels and value not in labels and not question.get('isOther'):
+                raise AnswerRejected('표시된 선택지 번호로 답하세요.')
+        return {question['id']:{'answers':[value]} for question,value in zip(questions,values)}
+    return choose
+
+
+def _answer_codex(record,text):
+    from .codex_rpc import CodexQuestionAnswerer
+    try:
+        with CodexQuestionAnswerer() as client:
+            confirmed=client.answer(record['payload'].get('session_id',''),_codex_choice(record,text))
+    except AnswerRejected:
+        raise
+    except (LookupError,RuntimeError,TimeoutError,OSError):
+        raise AnswerRejected('톡턴이 이 Codex 작업에 연결할 수 없어요. PC의 원래 창에서 답하세요.') from None
+    with locked('questions.lock'):
+        records=read_json('questions.json',[])
+        for item in records:
+            if item['id']==record['id']:
+                item.update(status='answered',response={'codex_resolved':confirmed})
+        write_json('questions.json',records)
+    return f"{record['id']} 답변을 Codex에 넣었어요." if confirmed else f"{record['id']} 답변을 보냈어요. 반영은 원래 창에서 확인하세요."
+
+
 def answer(request_id,text):
     if not re.fullmatch(r'Q[0-9A-Fa-f]{8}',request_id):
         raise AnswerRejected('질문 번호 형식은 Q1234ABCD입니다.')
@@ -107,7 +156,10 @@ def answer(request_id,text):
         if len(matches)!=1 or matches[0]['status']!='waiting' or matches[0]['expires_at']<=time.time():
             raise AnswerRejected('만료됐거나 이미 답한 질문이에요. PC의 원래 작업 창에서 확인하세요.')
         record=matches[0]
-        if record['kind']=='permission':
+        codex=record['kind']=='question' and record['provider']=='codex'
+        if codex:
+            pass  # Codex hooks cannot return answers; the shared server takes them, outside this lock.
+        elif record['kind']=='permission':
             choices={'승인':'allow','허용':'allow','거절':'deny','거부':'deny'}
             if not isinstance(text,str) or text not in choices:
                 raise AnswerRejected('승인 또는 거절을 정확히 입력해 주세요.' if record.get('remote_approval')
@@ -118,28 +170,16 @@ def answer(request_id,text):
         elif record['kind']=='question' and record['provider']=='claude':
             tool=copy.deepcopy(record['payload']['tool_input'])
             questions=tool.get('questions',[])
-            if not isinstance(text,(str,list)) or isinstance(text,list) and any(not isinstance(value,str) for value in text):
-                raise AnswerRejected('질문별 답변이 필요합니다.')
-            values=[value.strip() for value in (text if isinstance(text,list) else text.split(';'))]
-            if len(values)!=len(questions) or any(not value for value in values):
-                raise AnswerRejected('한 가지 답을 적어 주세요.' if len(questions)==1 else
-                                     f'질문 순서대로 답 {len(questions)}개를 쓰고 답 사이에 세미콜론(;)을 넣으세요.')
-            answers={}
-            for question,value in zip(questions,values):
-                options=question.get('options',[])
-                if re.fullmatch(r'\d+(?:,\d+)*',value):
-                    indexes=[int(x)-1 for x in value.split(',')]
-                    if any(index<0 or index>=len(options) for index in indexes) or len(indexes)>1 and not question.get('multiSelect'):
-                        raise AnswerRejected('질문에 표시된 선택지 번호를 입력하세요. 여러 번호는 복수 선택 질문에서만 쓸 수 있어요.')
-                    value=', '.join(options[index]['label'] if isinstance(options[index],dict) else str(options[index]) for index in indexes)
-                answers[question['question']]=value
-            tool['answers']=answers
+            tool['answers']={question['question']:value for question,value in zip(questions,_values(questions,text))}
             output={'hookSpecificOutput':{'hookEventName':'PreToolUse','permissionDecision':'allow','updatedInput':tool}}
         else:
             raise AnswerRejected('이 질문은 알림 전용이에요. PC의 원래 작업 창에서 답하세요.')
-        record['response']=output
-        record['status']='answered'
-        write_json('questions.json',records)
+        if not codex:
+            record['response']=output
+            record['status']='answered'
+            write_json('questions.json',records)
+    if codex:
+        return _answer_codex(record,text)
     return f'{request_id.upper()} 답변 접수. 대기 중인 원래 훅으로 전달됨.'
 
 
@@ -169,7 +209,7 @@ def handle(provider,payload, *, wait=True):
                     item['status']='delivery_failed'
             write_json('questions.json',records)
         raise
-    if not wait or not actionable(record):
+    if not wait or provider=='codex' and record['kind']=='question':  # async hook: answered via the server
         return {}
     while (ROOT/'reply-enabled').exists():
         with locked('questions.lock'):

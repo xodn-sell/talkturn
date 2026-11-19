@@ -10,6 +10,7 @@ import subprocess
 import time
 import tomllib
 from .codex_rpc import CodexReader
+from .statusline import account_key
 from .runtime import ROOT, NO_WINDOW, executable, read_json, write_json, run_json, locked, atomic_write
 
 
@@ -95,16 +96,40 @@ def add_account(provider,alias=None):
     return public_account(active[0])
 
 
+def session_accounts():
+    """Limits the Claude status line last saw, one row per account, windows not yet reset."""
+    now, rows = time.time(), {}
+    for key, entry in (read_json('claude-usage.json', {}) or {}).items():
+        windows = entry.get('windows', {})
+        limits = [{'name': name, 'remaining_pct': remaining(window.get('used')), 'resets_at': window['resets_at']}
+                  for name, window in (('5시간', windows.get('five_hour')), ('7일', windows.get('seven_day')))
+                  if isinstance(window, dict) and isinstance(window.get('resets_at'), (int, float)) and window['resets_at'] > now]
+        if limits:
+            rows[key] = {'order': entry.get('order', 0), 'limits': limits}
+    return rows
+
+
 def claude_usage():
-    raw = ccswap_accounts().get('claude', {})
+    seen = session_accounts()
+    try:
+        rows = ccswap_accounts().get('claude', {}).get('accounts', [])
+    except (RuntimeError, TimeoutError, OSError):
+        if not seen:
+            raise RuntimeError('아직 기록 없음. Claude 창에서 답을 한 번 받으면 표시됩니다.') from None
+        rows = []  # ccswap is optional: the status line already covers the accounts in use.
     result = []
-    for row in raw.get('accounts', []):
+    for row in rows:
         public = public_account(row)
+        session = seen.pop(account_key(row['email'], row.get('organizationUuid')), None) if row.get('email') else None
         good = row.get('usageStatus') == 'ok' and isinstance(row.get('usage'), dict)
         usage = row.get('usage') if good else row.get('lastGoodUsage')
         public.update({'source': 'ccswap', 'state': 'ok' if good else ('cached' if usage else 'unavailable'),
                        'fetched_at': row.get('usageFetchedAt') if good else row.get('lastGoodFetchedAt'),
                        'age_seconds': row.get('usageAgeSeconds') if good else row.get('lastGoodAgeSeconds'), 'limits': []})
+        public['active'] = public['active'] or session is not None
+        if session and not good:
+            public.update({'source': 'session', 'state': 'ok', 'limits': session['limits']})
+            usage = None
         if isinstance(usage, dict):
             windows = [('5시간', usage.get('fiveHour')), ('7일', usage.get('sevenDay'))]
             windows += [(str(item.get('name', '모델별')), item) for item in (usage.get('scoped') or []) if isinstance(item, dict)]
@@ -112,6 +137,9 @@ def claude_usage():
                 if isinstance(item, dict):
                     public['limits'].append({'name': name, 'remaining_pct': remaining(item.get('pct')), 'resets_at': item.get('resetsAt')})
         result.append(public)
+    for session in sorted(seen.values(), key=lambda row: row['order']):
+        result.append({'label': '등록 안 된 계정' if rows else f"계정 {session['order']}", 'active': True,
+                       'source': 'session', 'state': 'ok', 'limits': session['limits']})
     return {'accounts': result, 'exact_remaining_tokens': None}
 
 

@@ -1,9 +1,11 @@
 import copy
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 from contextlib import ExitStack
@@ -231,6 +233,36 @@ class ControlsTest(unittest.TestCase):
         self.assertNotIn('잔여율은',text)
         self.assertRegex(providers.reset_time(1794639426),r'^\d\d/\d\d \d\d:\d\d$')
 
+    def test_status_line_usage_is_one_row_per_account_with_or_without_ccswap(self):
+        from talkturn import statusline
+        claude=self.root/'claude'; claude.mkdir()
+        (claude/'.claude.json').write_text(json.dumps({'oauthAccount':{
+            'emailAddress':'Private@Example.com','organizationUuid':'org-1'}}),encoding='utf-8')
+        later=int(time.time())+3600
+        for used in (40,42,41):  # three sessions on one account; an idle one reports an older value
+            statusline.record({'rate_limits':{'five_hour':{'used_percentage':used,'resets_at':later},
+                                              'seven_day':{'used_percentage':10,'resets_at':later-7200}}})
+        self.assertNotIn('private',(self.root/'claude-usage.json').read_text(encoding='utf-8').lower())
+        with patch.object(providers,'ccswap_accounts',side_effect=RuntimeError('ccswap 실행 파일 없음')):
+            result=providers.claude_usage()
+        self.assertIn('● 계정 1\n  5시간 잔여 58%',commands.usage_text({'claude':result}))
+        self.assertEqual(len(result['accounts'][0]['limits']),1)  # the reset 7-day window is dropped
+        raw={'claude':{'accounts':[{'number':3,'email':'private@example.com','organizationUuid':'org-1',
+                                    'usageStatus':'unavailable'}]}}
+        with patch.object(providers,'ccswap_accounts',return_value=raw):
+            rows=providers.claude_usage()['accounts']
+        self.assertEqual([(row['label'],row['active'],row['state']) for row in rows],[('계정 3',True,'ok')])
+        (self.root/'claude-usage.json').unlink()
+        with patch.object(providers,'ccswap_accounts',side_effect=RuntimeError('x')), \
+             self.assertRaisesRegex(RuntimeError,'아직 기록 없음'):
+            providers.claude_usage()
+        out=io.TextIOWrapper(io.BytesIO())
+        with patch.object(statusline.sys,'argv',['statusline','--pass']), patch.object(statusline.sys,'stdout',out), \
+             patch.object(statusline.sys,'stdin',io.TextIOWrapper(io.BytesIO('{"model":{"display_name":"오퍼스"}}'.encode()))):
+            statusline.main()
+        out.flush()
+        self.assertEqual(json.loads(out.buffer.getvalue().decode('ascii')),{'model':{'display_name':'오퍼스'}})
+
     def test_codex_windows_and_usage_are_not_remaining_tokens(self):
         fake=self.stack.enter_context(patch.object(providers,'CodexReader'))
         fake.return_value.__enter__.return_value.call.return_value={
@@ -293,9 +325,19 @@ class ControlsTest(unittest.TestCase):
         cp=providers.config_path('codex'); cp.parent.mkdir()
         cp.write_text('model = "old"\nnotify = [\n "original.exe",\n "event"\n]\n[profiles.work]\nmodel="custom"\n',encoding='utf-8')
         cl=providers.config_path('claude'); cl.parent.mkdir()
-        cl.write_text(json.dumps({'hooks':{'Stop':[{'hooks':[{'type':'command','command':'keep-me'}]}]},'permissions':{'allow':['Read']}}),encoding='utf-8')
+        self.stack.enter_context(patch.object(service,'git_bash',return_value=True))
+        line={'type':'command','command':'node "C:/x/line.cjs"','padding':1}
+        cl.write_text(json.dumps({'hooks':{'Stop':[{'hooks':[{'type':'command','command':'keep-me'}]}]},'permissions':{'allow':['Read']},
+                                  'statusLine':line}),encoding='utf-8')
         service.install_hooks()
         service.install_hooks()
+        wrapped=providers.provider_config('claude')['statusLine']
+        self.assertTrue(wrapped['command'].endswith(' --pass | node "C:/x/line.cjs"'))
+        self.assertEqual(wrapped['padding'],1)
+        self.assertTrue(service.owned_hook(wrapped['command']))
+        compound={'statusLine':{'type':'command','command':'a && b'}}
+        service.wrap_statusline(compound)
+        self.assertEqual(compound['statusLine']['command'],'a && b')
         self.assertEqual(runtime.read_json('previous-notify.json'),['original.exe','event'])
         data=providers.provider_config('claude')
         self.assertEqual(len(data['hooks']['Stop']),2)
@@ -309,6 +351,7 @@ class ControlsTest(unittest.TestCase):
             service.uninstall()
         self.assertEqual(providers.provider_config('codex')['notify'],['original.exe','event'])
         self.assertEqual(providers.provider_config('claude')['hooks']['Stop'][0]['hooks'][0]['command'],'keep-me')
+        self.assertEqual(providers.provider_config('claude')['statusLine'],line)
 
     def baseline(self):
         runtime.write_json('baseline-hashes.json',[])

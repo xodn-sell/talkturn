@@ -68,6 +68,25 @@ def _blocks(text):
     return result
 
 
+def column_widths(natural, total):
+    """Short columns keep their own width; long ones share the rest and wrap."""
+    if sum(natural) <= total:
+        widths = list(natural)
+        widths[natural.index(max(natural))] += total - sum(natural)
+        return widths
+    widths, open_columns = {}, set(range(len(natural)))
+    while open_columns:
+        share = (total - sum(widths.values())) / len(open_columns)
+        small = {column for column in open_columns if natural[column] <= share}
+        if not small:
+            rest, wanted = total - sum(widths.values()), sum(natural[column] for column in open_columns)
+            widths.update({column: natural[column] * rest / wanted for column in open_columns})
+            break
+        widths.update({column: natural[column] for column in small})
+        open_columns -= small
+    return [widths[column] for column in range(len(natural))]
+
+
 def text_images(text, key, *, heading=''):
     font_dir = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts'
     font_path = Path(os.environ.get('TALKTURN_FONT') or os.environ.get('TOKTURN_FONT') or font_dir / 'malgun.ttf')
@@ -170,14 +189,18 @@ def text_images(text, key, *, heading=''):
                     blocks.append([{'kind': 'text', 'runs': line, 'height': 62}
                                    for line in wrap(' | '.join(value[0]), 'body', content_width)])
             else:
+                natural = [max(sum(probe.textlength(unit[0], font=unit[1])
+                                   for unit in spans(source[column], 'cellbold' if number == 0 else 'cell')) + 28
+                               for number, source in enumerate(value)) for column in range(columns)]
+                widths = column_widths(natural, content_width)
                 table_rows = []
                 for number, source in enumerate(value):
-                    cells = [wrap(cell, 'cellbold' if number == 0 else 'cell', content_width / columns - 28)
-                             for cell in source]
+                    cells = [wrap(cell, 'cellbold' if number == 0 else 'cell', width - 28)
+                             for cell, width in zip(source, widths)]
                     chunk = min(8, max(1, int((available - 24) // 48)))
                     for offset in range(0, max(map(len, cells)), chunk):
                         part = [cell[offset:offset + chunk] for cell in cells]
-                        table_rows.append({'kind': 'table', 'cells': part, 'header': number == 0,
+                        table_rows.append({'kind': 'table', 'cells': part, 'widths': widths, 'header': number == 0,
                                            'height': max(map(len, part)) * 48 + 24})
                 for row in table_rows[1:]:
                     if not row['header']:
@@ -264,13 +287,13 @@ def text_images(text, key, *, heading=''):
                 draw.rectangle((MARGIN, y, WIDTH - MARGIN, y + row['height']), fill='#f2f5f0')
                 draw_runs(draw, (MARGIN + 20, y + 2), row['runs'], '#53634a' if kind == 'code_label' else '#203226')
             elif kind == 'table':
-                cell_width = content_width / len(row['cells'])
-                for column, cell in enumerate(row['cells']):
-                    left = MARGIN + cell_width * column
+                left = MARGIN
+                for cell, cell_width in zip(row['cells'], row['widths']):
                     draw.rectangle((left, y, left + cell_width, y + row['height']),
                                    fill='#edf2e7' if row['header'] else '#fafbf8', outline='#d9e1d3', width=1)
                     for offset, line in enumerate(cell):
                         draw_runs(draw, (left + 14, y + 8 + offset * 48), line)
+                    left += cell_width
             elif kind != 'space':
                 draw_runs(draw, (MARGIN, y + 2), row['runs'])
             y += row['height']

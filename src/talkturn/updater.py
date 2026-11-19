@@ -73,6 +73,8 @@ def install(row):
         result = subprocess.run(command(row['wheel']))
         if result.returncode:
             raise RuntimeError(f"{row['version']} 설치 실패(종료 코드 {result.returncode}). 기존 버전을 그대로 씁니다.")
+        if (ROOT / 'installed-hooks.json').exists():
+            _service('service.install_hooks()')  # New releases may add hooks (e.g. the usage status line).
     finally:
         # Stopping the receiver also releases the mouse lock; leave both as the user had them.
         if was_running:

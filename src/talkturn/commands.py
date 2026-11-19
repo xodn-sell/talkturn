@@ -180,7 +180,7 @@ def usage_text(data):
             continue
         groups = block.get('accounts', []) if provider == 'claude' else [block]
         if not groups:
-            lines.append('ccswap에 등록된 계정 없음. PC에서 ccswap add 필요.')
+            lines.append('아직 기록 없음. Claude 창에서 답을 한 번 받으면 표시됩니다.')
         for group in groups:
             if provider == 'claude':
                 # An inactive account whose limits cannot be read adds nothing; the active one still says so.
