@@ -24,7 +24,7 @@ def reset_time(value):
         return '미제공'
     try:
         instant = datetime.fromtimestamp(value).astimezone() if isinstance(value, (int, float)) else datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone()
-        return instant.strftime('%m/%d %H:%M %Z')
+        return instant.strftime('%m/%d %H:%M')  # local time; Windows spells %Z out ("대한민국 표준시")
     except (ValueError, TypeError, OverflowError, OSError):
         return '미제공'
 

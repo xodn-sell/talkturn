@@ -95,17 +95,18 @@ def choice_menu(console,title,choices,*,selected=0,subtitle='↑↓ 이동 · En
 
 def header(console,view=None,*,spacious=True):
     from .computer import computer_label
-    relay=read_json('delivery.json',{}).get('model','gpt-6-luna')
-    relay={'gpt-6-luna':'GPT-6 Luna','claude-haiku-5-5':'Haiku 5.5'}.get(relay,relay)
+    # Before the first connection asks for it, no relay is chosen: do not show the runtime default as a choice.
+    relay=read_json('delivery.json',{}).get('model')
+    relay={'gpt-6-luna':'GPT-6 Luna','claude-haiku-5-5':'Haiku 5.5',None:'미선택'}.get(relay,relay)
     if console.width>=70 and not (view and view.get('compact') and console.height<=24):
         logo=Text('▀█▀ ▄▀█ █   █▄▀ ▀█▀ █ █ █▀█ █▄ █\n █  █▀█ █▄▄ █ █  █  █▄█ █▀▄ █ ▀█',style='bold bright_yellow',justify='center')
     else:
         logo=Text('talkturn',style='bold bright_yellow',justify='center')
     counts=view.get('account_counts',{}) if view else {}
     count_label=lambda provider:f"{counts[provider]}개" if type(counts.get(provider)) is int else '미확인'
-    # AGY has no login-status command: show only that its conversations were read over ACP, apart from the login counts.
+    # AGY has no login-status command and one account at a time: conversations read over ACP mean one login.
     agy=view and any(row.get('provider')=='agy' and row.get('reachable') for row in view.get('rows',[]))
-    caption=f"현재 로그인 계정 · Claude {count_label('claude')} · Codex {count_label('codex')}"+('   ·   AGY 연결됨' if agy else '') if view else '작업 결과는 카톡으로 · 답장은 원래 세션으로'
+    caption=f"현재 로그인 계정 · Claude {count_label('claude')} · Codex {count_label('codex')}"+(' · AGY 1개' if agy else '') if view else '작업 결과는 카톡으로 · 답장은 원래 세션으로'
     caption=Text(caption,style='grey62',justify='center',no_wrap=True,overflow='ellipsis')
     if view and view.get('compact') and not spacious:
         if '\n' not in logo.plain:

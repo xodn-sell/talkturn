@@ -6,7 +6,7 @@
 
 Windows용 터미널 CLI입니다. Claude Code·Codex·Antigravity CLI(`agy`)의 작업 결과를 카카오톡 **나와의 채팅**에서 보고, 작업 제목 카드에 **답장**해 기존 작업을 이어갑니다.
 
-**0.1.2 알파 · Windows 개발자용.** 카카오 PC 화면과 각 CLI의 수신 연결에 의존합니다. Kakao 공식 제품이 아닙니다.
+**0.1.3 알파 · Windows 개발자용.** 카카오 PC 화면과 각 CLI의 수신 연결에 의존합니다. Kakao 공식 제품이 아닙니다.
 
 ## 할 수 있는 것
 
@@ -33,7 +33,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 TalkTurn을 설치하고 실행합니다.
 
 ```powershell
-uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.2/talkturn-0.1.2-py3-none-any.whl
+uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.3/talkturn-0.1.3-py3-none-any.whl
 talkturn
 ```
 
@@ -46,7 +46,7 @@ talkturn
 3. 처음이면 연결할 채팅창과 답장 판별에 쓸 AI를 고르고, 마우스 잠금 안내를 확인합니다.
 4. 휴대폰에 온 **[작업 제목]** 카드에 “로그인 실패도 확인해 줘”처럼 답장하면 그 작업에 전달됩니다.
 
-연결 중에는 PC 마우스가 잠깁니다. **Esc를 약 2.5초 누르면** 잠금이 풀리고 연결이 끝납니다. AGY 작업을 받으려면 `talkturn setup-agy`를 한 번 실행합니다.
+연결 중에는 PC 마우스가 잠깁니다. **Esc를 약 2.5초 누르면** 잠금이 풀리고 연결이 끝납니다. Claude Code·Codex의 결과 알림 훅은 첫 연결 때, AGY 훅은 AGY 작업을 체크해 연결할 때 자동으로 등록됩니다.
 
 ## 카톡에서 쓰기
 
@@ -55,7 +55,6 @@ talkturn
 | 작업 제목 카드·결과 | 요청 내용 | 원래 작업에 전달 |
 | `talkturn in` 안내 | `help` (대소문자 무관) | 사용법 보기 |
 | `talkturn in` 안내 | `화면` · `사용량` | PC 화면 스크린샷 · 남은 한도 |
-| `talkturn in` 안내 | `원문` | 받은 결과를 글로 다시 받기 |
 | `talkturn in` 안내 | `out` | 연결 끊기 |
 | 질문 말풍선 | 번호 · `승인` · `거절` | Claude 질문·승인 요청에 답하기 |
 

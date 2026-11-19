@@ -323,6 +323,13 @@ def watch_many(codes,catalog=None):
         if len(matches)!=1:
             raise ValueError('체크한 세션을 찾을 수 없습니다. 목록을 새로고침해 주세요.')
         result.append(matches[0])
+    if any(row['provider']=='agy' for row in result):
+        # Checking AGY work installs its completion hook, as the first connection does for Claude and Codex.
+        from .agy_hooks import install
+        try:
+            install()
+        except (OSError,ValueError) as error:
+            raise ValueError(f'AGY 완료 알림 훅을 걸지 못해 체크를 저장하지 않았습니다. {error}') from error
     with locked('view.lock'):
         ui=read_json('ui.json',{})
         ui['watched_sessions']=result

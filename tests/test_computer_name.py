@@ -61,7 +61,7 @@ class ComputerNameTest(unittest.TestCase):
             self.assertIn('취소',cli.edit_computer_name())
         self.assertEqual(computer.computer_name(),'이전 PC')
 
-    def test_fresh_interactive_setup_asks_once_and_enter_keeps_default(self):
+    def test_fresh_interactive_setup_never_asks_for_a_name(self):
         def pair(title):
             data=runtime.read_json('delivery.json',{})
             runtime.write_json('delivery.json',{**data,'window_id':42,'room_name':title})
@@ -71,9 +71,8 @@ class ComputerNameTest(unittest.TestCase):
              patch.object(cli.sys.stdin,'isatty',return_value=True),patch('builtins.input',return_value='1'), \
              patch.object(cli.console,'input',return_value='') as prompt:
             cli.setup(['--relay-model','luna'])
-            cli.setup(['--relay-model','luna'])
-            prompt.assert_called_once()
-        self.assertEqual(runtime.read_json('delivery.json')['computer_name'],'내 PC')
+            prompt.assert_not_called()
+        self.assertEqual(computer.computer_name(),'내 PC')
 
     def test_n_key_edit_retains_draft_checks_and_ten_row_layout(self):
         computer.set_computer_name('작업 PC')

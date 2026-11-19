@@ -104,11 +104,8 @@ def setup(args, *, commit_selection=None):
     if not relay_model and needs_relay_choice(existing) and sys.stdin.isatty():
         relay_model=choose_relay_model()
         if relay_model is None: return '설정 취소.'
+    # The first connection keeps the default '내 PC'; N or `computer-name` renames it later.
     name=options.computer_name
-    if name is None and not options.self_chat and not options.migrate and sys.stdin.isatty():
-        if not existing.get('computer_name') and not existing.get('window_id'):
-            name=ask_computer_name()
-            if name is None: return '설정 취소.'
     if not confirm_connection():
         return '연결 취소.'
     if options.migrate:

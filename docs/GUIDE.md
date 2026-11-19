@@ -70,7 +70,7 @@ talkturn
 [Releases](https://github.com/xodn-sell/talkturn/releases)의 wheel 주소로 바로 설치:
 
 ```powershell
-uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.2/talkturn-0.1.2-py3-none-any.whl
+uv tool install https://github.com/xodn-sell/talkturn/releases/download/v0.1.3/talkturn-0.1.3-py3-none-any.whl
 talkturn
 ```
 
@@ -82,7 +82,7 @@ talkturn
 2. 톡턴의 첫 화면에서 **←→**로 Claude Code·Codex·AGY 탭을 바꾸고, **↑↓**로 받을 작업을 찾아 **Space**로 체크합니다. 목록이 비었으면 원래 앱에서 작업을 열고 **R**을 누르세요. **Enter**로 연결을 시작합니다.
 3. 처음 연결하는 경우 별도로 연 나와의 채팅을 고릅니다. 자동 답장 판별을 쓸 때는 어느 계정의 로그인과 사용량을 쓸지 선택합니다. 저장된 중계 설정은 다음에도 사용합니다. 연결 확인 화면에서 마우스·터치패드 잠금과 해제 방법을 확인한 뒤 **Enter**로 진행하거나 **Esc**로 취소하세요.
 4. `talkturn in` 메시지가 실제 도착했는지 프로그램이 확인합니다.
-5. Codex·Claude 완료 훅과 Windows 로그인 시 수신기 자동 시작이 설정됩니다. 기존의 다른 훅은 보존합니다. AGY 완료 훅은 아래의 `talkturn setup-agy`로 별도 등록합니다.
+5. Codex·Claude 완료 훅과 Windows 로그인 시 수신기 자동 시작이 설정됩니다. 기존의 다른 훅은 보존합니다. AGY 완료 훅은 AGY 작업(G-)을 체크해 연결할 때 자동으로 등록됩니다.
 6. `talkturn codex`, `talkturn claude`, `talkturn agy`로 같은 터미널에서 해당 도구를 실행할 수 있습니다. 뒤에 붙인 인수는 해당 CLI로 전달합니다. 설치 전에 열려 있던 작업은 새 훅을 로드하려면 재시작이 필요할 수 있습니다.
 
 비대화형 설정 예: `talkturn setup --self-chat "내 채팅 창 이름" --section chatgpt --relay-model luna`. 선택한 중계 모델은 세 provider의 답장 판별에 공통 적용하며 실제 작업 모델과 별개입니다.
@@ -95,11 +95,10 @@ talkturn
 
 ```powershell
 agy --version
-talkturn setup-agy
 talkturn agy
 ```
 
-`setup-agy`는 AGY의 사용자 훅 파일 `~/.gemini/config/hooks.json`에 TalkTurn의 `SessionStart`·`PreInvocation`·`Stop` 항목을 등록합니다. 기존 사용자 훅과 비활성화 설정을 보존하고 변경 전 파일을 백업합니다. 같은 `talkturn` 이름을 다른 훅이 쓰면 덮어쓰지 않습니다. 카톡 연결은 별도로 `talkturn setup`에서 진행합니다.
+AGY 작업(G-)을 체크해 연결하면 TalkTurn이 AGY의 사용자 훅 파일 `~/.gemini/config/hooks.json`에 TalkTurn의 `SessionStart`·`PreInvocation`·`Stop` 항목을 등록합니다. 기존 사용자 훅과 비활성화 설정을 보존하고 변경 전 파일을 백업합니다. 같은 `talkturn` 이름을 다른 훅이 쓰거나 파일 형식을 읽을 수 없으면 덮어쓰지 않고, 그 이유와 함께 체크를 저장하지 않습니다. 카톡 연결 없이 훅만 등록하려면 `talkturn setup-agy`를 실행합니다.
 
 AGY에서 작업을 연 뒤 다른 터미널에서 `talkturn`을 실행하고 **←→로 세 번째 AGY 탭**을 엽니다. **G-로 시작하는 세션**을 Space로 체크한 다음 Enter로 확정합니다. `talkturn sessions agy`와 `talkturn connect agy`로 저장된 대화·재개 가능 여부도 확인할 수 있습니다. `agy`, `antigravity`, `안티그래비티`는 provider 별칭입니다.
 
@@ -126,7 +125,7 @@ AGY의 원격 도구 승인 요청은 `cancelled`로 응답하며 추가 질문(
 | 답장 판별 실패·중계 한도 소진 | `talkturn usage`로 한도 확인. 한국어 OCR 설치와 중계용 CLI 로그인을 확인. 당장은 원래 작업 창에서 이어가거나 `talkturn router off` 후 새 결과의 작업 번호로 전달 |
 | 카톡 입력칸에 작성 중인 글이 있음 | 초안을 직접 보내거나 비운 뒤 다시 시도. TalkTurn은 작성 중인 글을 덮어쓰지 않음 |
 | 재현되지 않는 전달 실패 | `%LOCALAPPDATA%\TalkTurn\reply-log.json`의 `stage`·`gate` 확인. `TALKTURN_HOME`을 지정했다면 그 폴더를 확인. 실패 캡처에는 개인 대화가 포함될 수 있으므로 그대로 공개하지 않음 |
-| AGY 완료 결과가 안 옴 | `talkturn setup-agy` 후 AGY 작업을 열고 해당 G- 세션을 수신 체크했는지 확인. 카톡 연결과 `notifications on`도 확인 |
+| AGY 완료 결과가 안 옴 | AGY 작업을 열고 해당 G- 세션을 체크해 연결했는지 확인(이때 훅이 자동 등록됨). 카톡 연결과 `notifications on`도 확인 |
 | AGY가 ‘재개 가능’인데 답장 후 중단됨 | 실행 중 표시가 아님. 원래 AGY 창에서 권한·추가 질문·처리 결과를 확인. TalkTurn은 원격 승인하지 않으며 접수 불명 상태를 자동 재전송하지 않음 |
 
 `talkturn status`는 작업·대기 질문·모델·계정 한도를 보여 줍니다. `전달되었습니다.`는 원래 세션의 **접수 확인**이며 AI의 작업 완료를 뜻하지 않습니다.
@@ -147,7 +146,7 @@ Claude 앱의 저장 작업은 앱에서 **원래 작업을 열고 세션 초기
 
 **A → 새 계정 로그인 후 추가**는 현재 로그인을 먼저 ccswap에 저장한 뒤 해당 CLI의 로그인 화면을 열고, 완료 후 새 계정을 등록합니다. **현재 로그인 계정 등록**은 로그인 전환 없이 저장합니다. 같은 계정이면 중복 추가 대신 갱신됐다고 표시합니다. Claude 계정에는 구분용 별칭을 붙일 수 있습니다. 계정 전환·추가를 다녀와도 아직 확정하지 않은 작업 체크를 유지합니다.
 
-시작 화면의 로고 아래에는 **Codex·Claude의 현재 로그인 계정 수**를 표시합니다. 두 CLI의 공식 로그인 상태가 참이면 1개, 거짓이면 0개, 조회에 실패하면 `미확인`입니다. 저장한 계정 수나 작업 세션 수를 뜻하지 않습니다. AGY는 로그인 확인 명령이 없어 계정 수를 세지 않고, 대화 목록을 ACP로 읽었을 때만 `AGY 연결됨`을 덧붙입니다. 화면 정보를 갱신할 때 두 CLI를 병렬로 한 번씩 조회하며 방향키 이동·체크·화면 크기 변경에는 다시 조회하지 않습니다. 기존 AI에서 작업을 연 뒤 **R 새로고침**으로 목록을 갱신합니다. 필요하면 `talkturn connect codex` / `talkturn connect claude`로 기존 수신 연결을 확인하거나 해당 CLI의 새 터미널을 열 수 있습니다. `talkturn connect agy`는 저장된 대화의 재개 가능 여부를 확인하며, AGY의 계정 추가·전환은 원래 AGY에서 처리합니다.
+시작 화면의 로고 아래에는 **Codex·Claude의 현재 로그인 계정 수**를 표시합니다. 두 CLI의 공식 로그인 상태가 참이면 1개, 거짓이면 0개, 조회에 실패하면 `미확인`입니다. 저장한 계정 수나 작업 세션 수를 뜻하지 않습니다. AGY는 로그인 확인 명령이 없고 한 번에 계정 하나만 쓰므로, 대화 목록을 ACP로 읽었을 때만 `AGY 1개`를 덧붙입니다. 그 위 줄의 `중계`는 답장 판별 AI이며, 첫 연결에서 고르기 전에는 `미선택`으로 표시합니다. 화면 정보를 갱신할 때 두 CLI를 병렬로 한 번씩 조회하며 방향키 이동·체크·화면 크기 변경에는 다시 조회하지 않습니다. 기존 AI에서 작업을 연 뒤 **R 새로고침**으로 목록을 갱신합니다. 필요하면 `talkturn connect codex` / `talkturn connect claude`로 기존 수신 연결을 확인하거나 해당 CLI의 새 터미널을 열 수 있습니다. `talkturn connect agy`는 저장된 대화의 재개 가능 여부를 확인하며, AGY의 계정 추가·전환은 원래 AGY에서 처리합니다.
 
 **Esc**로 건너뛰고 명령 입력 중 빈 **Enter** 또는 `select`로 선택 화면을 다시 엽니다. 이동·체크 때 바뀐 줄만 갱신합니다. 선택 화면의 빈 Enter·잘못된 번호는 화면 안에서 안내합니다. 같은 실행에서 확정한 체크를 모두 해제한 뒤 Enter를 누르면 해제를 적용하고, 모든 작업의 수신을 끄려면 `watch none`을 입력합니다.
 

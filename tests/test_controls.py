@@ -223,7 +223,13 @@ class ControlsTest(unittest.TestCase):
         self.assertNotIn('private',json.dumps(result))
         self.assertIsNone(providers.remaining(None))
         self.assertIsNone(providers.remaining(float('nan')))
-        self.assertIn('마지막 성공값',commands.usage_text({'claude':result}))
+        text=commands.usage_text({'claude':result})
+        self.assertIn('● 계정 1',text)
+        self.assertNotIn('계정 2',text)  # inactive and unreadable: omitted
+        self.assertIn('○ 계정 3\n  5시간 잔여 50%',text)
+        self.assertNotIn('초 전',text)
+        self.assertNotIn('잔여율은',text)
+        self.assertRegex(providers.reset_time(1794639426),r'^\d\d/\d\d \d\d:\d\d$')
 
     def test_codex_windows_and_usage_are_not_remaining_tokens(self):
         fake=self.stack.enter_context(patch.object(providers,'CodexReader'))

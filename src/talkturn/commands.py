@@ -54,7 +54,6 @@ PHONE_HELP = '''TalkTurn 사용법
 아래 명령 → 'talkturn in' 안내에 답장으로 단어만
 화면  → PC 화면 스샷
 사용량  → 남은 한도
-원문  → 받은 답을 글자로 다시 받기
 out  → 연결 끊기'''
 
 
@@ -184,12 +183,13 @@ def usage_text(data):
             lines.append('ccswap에 등록된 계정 없음. PC에서 ccswap add 필요.')
         for group in groups:
             if provider == 'claude':
-                lines.append(f"{'●' if group['active'] else '○'} {group['number']} {group['label']}")
+                # An inactive account whose limits cannot be read adds nothing; the active one still says so.
+                if group.get('state') == 'unavailable' and not group['active']:
+                    continue
+                lines.append(f"{'●' if group['active'] else '○'} {group['label']}")
                 if group.get('state') == 'unavailable':
                     lines.append('  한도 미제공/조회 실패')
                     continue
-                age = group.get('age_seconds')
-                lines.append('  ' + ('마지막 성공값' if group.get('state') == 'cached' else '조회값') + (f' · {int(age)}초 전' if isinstance(age,(int,float)) else ''))
             for limit in group.get('limits', []):
                 pct = limit.get('remaining_pct')
                 rest = f'{pct:g}%' if pct is not None else '미제공'
@@ -197,7 +197,6 @@ def usage_text(data):
         if provider in ('codex','agy'):
             if not block.get('limits'):
                 lines.append('한도 미제공')
-    lines.append('\n잔여율은 서비스 한도 기준. 정확한 남은 토큰 수는 미제공.')
     return '\n'.join(lines)
 
 

@@ -161,6 +161,8 @@ class PortableCoreTest(unittest.TestCase):
                 for provider in ('claude', 'codex', 'agy')]
         catalog = {'rows': rows, 'fetched_at': time.time()}
         runtime.write_json('ui.json', {'selected_session': rows[0], 'section': 'all', 'note': '사용자 설정 보존'})
+        # Checking AGY work installs its hook in the real ~/.gemini config: never from a test.
+        self.enterContext(patch('talkturn.agy_hooks.install'))
         sessions.watch_many([row['code'] for row in rows], catalog)
         self.assertEqual(sessions.watched(), rows)
         self.assertEqual(sessions.selected(), rows[0])

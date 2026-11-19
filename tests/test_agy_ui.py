@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -134,12 +135,34 @@ class AgyUiTest(unittest.TestCase):
         self.assertIn('Codex 0개', text)
         self.assertNotIn('AGY', text)
         self.assertNotIn('5개', text)
-        # Conversations read over ACP show AGY as connected, still without a login count.
+        # Conversations read over ACP mean the one AGY login, never a stored slot count.
         console = Console(file=io.StringIO(), width=100, height=30)
         console.print(terminal.header(console, {**view, 'rows': [{'provider': 'agy', 'reachable': True}]}))
         text = console.file.getvalue()
-        self.assertIn('AGY 연결됨', text)
+        self.assertIn('AGY 1개', text)
         self.assertNotIn('5개', text)
+
+    def test_checking_agy_work_installs_its_completion_hook(self):
+        rows = [row('codex', 1), row('agy', 1)]
+        catalog = {'rows': rows, 'fetched_at': time.time()}
+        with patch('talkturn.agy_hooks.install') as install:
+            sessions.watch_many([rows[0]['code']], catalog)
+            install.assert_not_called()
+            sessions.watch_many([item['code'] for item in rows], catalog)
+            install.assert_called_once_with()
+            install.side_effect = ValueError('AGY hooks.json 형식을 확인할 수 없습니다.')
+            with self.assertRaisesRegex(ValueError, 'AGY 완료 알림 훅'):
+                sessions.watch_many([rows[1]['code']], catalog)
+        self.assertEqual(len(runtime.read_json('ui.json')['watched_sessions']), 2)
+
+    def test_header_shows_no_relay_until_one_is_chosen(self):
+        console = Console(file=io.StringIO(), width=100, height=30)
+        console.print(terminal.header(console, {'compact': True, 'account_counts': {}}))
+        self.assertIn('중계 미선택', console.file.getvalue())
+        runtime.write_json('delivery.json', {'model': 'claude-haiku-5-5'})
+        console = Console(file=io.StringIO(), width=100, height=30)
+        console.print(terminal.header(console, {'compact': True, 'account_counts': {}}))
+        self.assertIn('중계 Haiku 5.5', console.file.getvalue())
 
     def picker(self, view, keys):
         console = Console(file=io.StringIO(), force_terminal=True, legacy_windows=False, width=80, height=24)
