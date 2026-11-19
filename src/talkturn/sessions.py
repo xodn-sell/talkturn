@@ -405,19 +405,35 @@ def clear():
 
 
 def send_selected(message,expected=None):
+    name,receipt=forward_selected(message,expected)
+    from .commands import forward_response
+    return name+'\n'+forward_response(receipt)
+
+
+def forward_selected(message,expected=None,*,still_current=None):
+    from .reply_bridge import SessionUnavailable,forward
     if not isinstance(message,str) or not message.strip():
         raise ValueError('전달할 내용 필요.')
-    row=selected()
-    if not row:
-        raise ValueError('먼저 세션을 선택해 주세요. 톡턴 세션 → 톡턴 선택 세션코드')
-    if expected is not None and identity(expected)!=identity(row):
-        raise ValueError('다른 화면에서 선택한 작업이 바뀌었습니다. 보낼 작업을 다시 클릭해 주세요.')
-    row=validate_target(row)
-    from .reply_bridge import forward
+    try:
+        row=selected()
+        if not row:
+            raise ValueError('먼저 세션을 선택해 주세요. 톡턴 세션 → 톡턴 선택 세션코드')
+        if expected is not None and identity(expected)!=identity(row):
+            raise ValueError('다른 화면에서 선택한 작업이 바뀌었습니다. 보낼 작업을 다시 클릭해 주세요.')
+        row=validate_target(row)
+    except (ValueError,RuntimeError,OSError) as error:
+        if still_current is not None:
+            raise SessionUnavailable('보낼 작업을 확인하지 못했습니다. 작업을 다시 선택하세요.') from error
+        raise
+    if still_current is not None and (not still_current() or identity(selected())!=identity(row)):
+        raise SessionUnavailable('연결이나 선택한 작업이 바뀌었습니다.')
     receipt=forward({'source':row['provider'],'session_id':row['session_id'],'cwd':row.get('cwd',''),
                      'peer_ref':row.get('peer_ref'),'target_kind':row.get('target_kind'),'name':row.get('name')},message)
-    write_json('last-selected-send.json',{'provider':row['provider'],'session_id':row['session_id'],'accepted':True,'at':time.time()})
-    return f"{row['name']}\n원래 세션에 전달 접수."+(' 재개 상태는 원래 창에서 확인 필요.' if receipt.get('resume_warning') else '')
+    if receipt.get('accepted') is not True:
+        raise RuntimeError('원래 작업의 접수를 확인하지 못했습니다.')
+    write_json('last-selected-send.json',{'provider':row['provider'],'session_id':row['session_id'],'accepted':True,
+                                          'stage':'queued' if receipt.get('stage')=='queued' else 'accepted','at':time.time()})
+    return row['name'],receipt
 
 
 def phone_text(catalog):

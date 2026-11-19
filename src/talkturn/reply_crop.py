@@ -314,9 +314,38 @@ def _write_crops(frame, bubble, thumbnail, divider, quoted_top, key):
             'body_path': str(body_path.resolve()), 'quoted_path': str(quoted_path.resolve())}
 
 
+def _query_with_antialiased_edge(body, frame, bubble, color, outside):
+    """Accept the thin blended outline of an isolated receipt/original query."""
+    from .commands import parse
+    command=parse(body,remote=True)
+    if command not in (['receipt'],['original']) and not (
+            command and len(command)==2 and command[0]=='original' and re.fullmatch(r'T[0-9a-f]{8,64}',command[1],re.I)):
+        return False
+    left,top,right,_=bubble
+    if left<6 or top<6 or right+5>=frame.width:
+        return False
+    background=frame.getpixel((3,frame.height-3))
+    # In scaled Kakao captures the two outer pixels blend the bubble into the wallpaper.
+    # Require continuous wallpaper directly above, and on both sides past that outline.
+    checks=[(x,y) for y in range(top-5,top-2) for x in range(left+6,right-6)]
+    checks.extend((x,top+3) for x in (left-5,left-4,left-3,right+2,right+3,right+4))
+    if any(max(abs(a-b) for a,b in zip(frame.getpixel(point),background))>4 for point in checks):
+        return False
+    channel=max(range(3),key=lambda i:abs(color[i]-background[i]))
+    contrast=color[channel]-background[channel]
+    if abs(contrast)<32:
+        return False
+    for pixel in outside:
+        alpha=(pixel[channel]-background[channel])/contrast
+        if not 0<=alpha<=0.25 or any(abs(value-(base+alpha*(ink-base)))>4 for value,base,ink in zip(pixel,background,color)):
+            return False
+    return True
+
+
 def message_kind(message,image_path,cache=None):
     """Prove one quoted or ordinary bubble locally; uncertainty never authorizes a control."""
     cache=cache if cache is not None else {}
+    cache.pop('plain_stop',None)
     if isolate_reply(message,image_path,cache):
         return 'reply'
     body=message.get('text') if isinstance(message,dict) else None
@@ -334,15 +363,20 @@ def message_kind(message,image_path,cache=None):
                 if not lines:return None
                 runs=_body_runs(lines,_normalize(body),_command_match)
                 if len(runs)!=1:
+                    cache['plain_stop']='command_read_twice' if runs else 'command_not_read'
                     return None
                 found=_bubble(frame,runs[0][0]['box'])
-                if not found:return None
+                if not found:
+                    cache['plain_stop']='no_complete_command_bubble'
+                    return None
                 bubble,color=found
                 outside=[frame.getpixel(point) for point in (
                     (bubble[0]-2,bubble[1]+3),(bubble[2]+1,bubble[1]+3),
                     ((bubble[0]+bubble[2])//2,bubble[1]-2))]
                 if any(max(abs(a-b) for a,b in zip(outside[0],sample))>8 for sample in outside[1:]):
-                    return None  # A differently colored quoted block above is not a separate plain bubble.
+                    if not _query_with_antialiased_edge(body,frame,bubble,color,outside):
+                        cache['plain_stop']='command_border_unproven'
+                        return None  # A differently colored quoted block is not a separate plain bubble.
                 visible=[line for line in lines if _inside(line['box'],bubble)]
                 if (any(_reply_header(line['text']) for line in visible)
                         or not _command_match(_normalize(''.join(line['text'] for line in visible)),_normalize(body))):

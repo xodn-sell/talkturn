@@ -41,6 +41,7 @@ dist/
 /reply-receipts.json
 /reply-status.json
 /reply-log.json
+/last-reply-state.json
 /reply-bridge.pid
 /reply-view.png
 /reply-view.bmp

@@ -11,6 +11,10 @@ import uuid
 from .runtime import ROOT, read_json, write_json, locked
 
 
+class AnswerRejected(ValueError):
+    """A question-response validation message safe to show to the person answering."""
+
+
 def pending():
     return [item for item in read_json('questions.json',[]) if item.get('status')=='waiting' and item['expires_at']>time.time()]
 
@@ -28,30 +32,43 @@ def quoted_request_id(text):
 
 def describe(record):
     from .result_format import session_heading
-    payload=record['payload']; tool=payload.get('tool_input',{})
+    payload=record['payload']
+    tool=payload.get('tool_input')
+    tool=tool if isinstance(tool,dict) else {}
     heading=session_heading({'source':record['provider'],'session_id':payload.get('session_id')})
     lines=[f"질문 {record['id']}" if actionable(record) else '알림 전용 · 원래 Codex 창에서 응답']
     if heading:lines.append(heading)
+    settings=read_json('delivery.json',{})
+    chat_replies=settings.get('reply_mode')!='manual' and settings.get('reply_routing_enabled') is not False
     if record['kind']=='question':
-        for number,question in enumerate(tool.get('questions',[]),1):
+        questions=tool.get('questions',[])
+        for number,question in enumerate(questions,1):
             lines.append(f"{number}. {question.get('question') or question.get('title') or ''}")
             for index,option in enumerate(question.get('options',[]),1):
                 label=option.get('label','') if isinstance(option,dict) else str(option)
                 description=option.get('description','') if isinstance(option,dict) else ''
                 lines.append(f'   {index}) {label}' + (f' — {description}' if description else ''))
-        if record['provider']=='claude':
-            lines.append('이 질문 말풍선에 답장해 주세요. 번호 또는 직접 입력. 여러 질문은 세미콜론으로 구분.')
-        else:
+        if record['provider']!='claude':
             lines.append('이 Codex 질문은 알림 전용. 선택·응답은 원래 창에서 진행.')
+        elif not chat_replies:
+            lines.append('카톡 답장이 꺼져 있어요. PC의 원래 작업 창에서 답하세요.')
+        else:
+            lines.append('이 말풍선에 선택지 번호나 답을 적어 답장하세요.' if any(q.get('options') for q in questions)
+                         else '이 말풍선에 답을 적어 답장하세요.')
+            if len(questions)>1:
+                lines.append('질문 순서대로 답을 쓰고 답 사이에 세미콜론(;)을 넣으세요.')
     elif record['kind']=='permission':
         lines.append('작업 승인 요청: '+payload.get('tool_name',''))
         # Show the concrete action, without sending unrelated transcript or suggested permanent rules.
         preview={key:value for key,value in tool.items() if key in ('command','description','file_path','path','url','host','reason','justification')}
-        if not preview:
-            lines.append('세부 동작을 안전하게 표시할 수 없음. 원래 창에서 확인.')
-        else:
+        if preview:
             lines.append(json.dumps(preview,ensure_ascii=False,indent=2))
-        lines.append('이 질문 말풍선에 답장: 승인 또는 거절. 이번 요청에만 적용됩니다.')
+        if not chat_replies:
+            lines.append('카톡 답장이 꺼져 있어요. PC의 원래 작업 창에서 요청을 확인하세요.')
+        elif record.get('remote_approval'):
+            lines.append('이 말풍선에 ‘승인’ 또는 ‘거절’로 답장하세요. 이번 요청에만 적용됩니다.')
+        else:
+            lines.append('승인하려면 PC의 원래 작업 창에서 전체 내용을 확인하세요. 거절하려면 이 말풍선에 ‘거절’로 답장하세요.')
     else:
         lines.append(str(payload.get('message') or payload.get('title') or '원래 작업 창에서 사용자 입력을 기다립니다.'))
         lines.append('원래 창에서 확인 필요.')
@@ -83,41 +100,43 @@ def prepare(provider,payload):
 
 def answer(request_id,text):
     if not re.fullmatch(r'Q[0-9A-Fa-f]{8}',request_id):
-        raise ValueError('질문 번호 형식: Q1234ABCD')
+        raise AnswerRejected('질문 번호 형식은 Q1234ABCD입니다.')
     with locked('questions.lock'):
         records=read_json('questions.json',[])
         matches=[record for record in records if record['id'].upper()==request_id.upper()]
         if len(matches)!=1 or matches[0]['status']!='waiting' or matches[0]['expires_at']<=time.time():
-            raise ValueError('만료됐거나 이미 응답한 질문. 원래 창 확인 필요.')
+            raise AnswerRejected('만료됐거나 이미 답한 질문이에요. PC의 원래 작업 창에서 확인하세요.')
         record=matches[0]
         if record['kind']=='permission':
             choices={'승인':'allow','허용':'allow','거절':'deny','거부':'deny'}
             if not isinstance(text,str) or text not in choices:
-                raise ValueError('승인 또는 거절을 정확히 입력해 주세요.')
+                raise AnswerRejected('승인 또는 거절을 정확히 입력해 주세요.' if record.get('remote_approval')
+                                     else '이 요청은 카톡에서 거절만 할 수 있어요. 승인은 PC의 원래 작업 창에서 확인하세요.')
             if choices[text]=='allow' and not record.get('remote_approval'):
-                raise ValueError('전체 동작이 카톡에 표시되지 않아 원래 창에서 승인해야 함.')
+                raise AnswerRejected('승인하려면 PC의 원래 작업 창에서 전체 내용을 확인하세요.')
             output={'hookSpecificOutput':{'hookEventName':'PermissionRequest','decision':{'behavior':choices[text]}}}
         elif record['kind']=='question' and record['provider']=='claude':
             tool=copy.deepcopy(record['payload']['tool_input'])
             questions=tool.get('questions',[])
             if not isinstance(text,(str,list)) or isinstance(text,list) and any(not isinstance(value,str) for value in text):
-                raise ValueError('질문별 답변이 필요합니다.')
+                raise AnswerRejected('질문별 답변이 필요합니다.')
             values=[value.strip() for value in (text if isinstance(text,list) else text.split(';'))]
             if len(values)!=len(questions) or any(not value for value in values):
-                raise ValueError(f'{len(questions)}개 답변 필요. 여러 답변은 ; 로 구분.')
+                raise AnswerRejected('한 가지 답을 적어 주세요.' if len(questions)==1 else
+                                     f'질문 순서대로 답 {len(questions)}개를 쓰고 답 사이에 세미콜론(;)을 넣으세요.')
             answers={}
             for question,value in zip(questions,values):
                 options=question.get('options',[])
                 if re.fullmatch(r'\d+(?:,\d+)*',value):
                     indexes=[int(x)-1 for x in value.split(',')]
                     if any(index<0 or index>=len(options) for index in indexes) or len(indexes)>1 and not question.get('multiSelect'):
-                        raise ValueError('유효한 선택지 번호가 아님.')
+                        raise AnswerRejected('질문에 표시된 선택지 번호를 입력하세요. 여러 번호는 복수 선택 질문에서만 쓸 수 있어요.')
                     value=', '.join(options[index]['label'] if isinstance(options[index],dict) else str(options[index]) for index in indexes)
                 answers[question['question']]=value
             tool['answers']=answers
             output={'hookSpecificOutput':{'hookEventName':'PreToolUse','permissionDecision':'allow','updatedInput':tool}}
         else:
-            raise ValueError('이 질문은 카톡 알림 전용. 원래 창에서 답변 필요.')
+            raise AnswerRejected('이 질문은 알림 전용이에요. PC의 원래 작업 창에서 답하세요.')
         record['response']=output
         record['status']='answered'
         write_json('questions.json',records)

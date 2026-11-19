@@ -193,6 +193,10 @@ def control_quote(text):
 _unread={}  # fingerprint -> checks that left the message unconsumed because OCR was unavailable
 
 
+class SessionUnavailable(RuntimeError):
+    """The destination was checked before any work was sent."""
+
+
 def control_reply(message,image_path,classifications):
     """True only for a reply quoting one of TalkTurn's own control bubbles, e.g. `talkturn in`.
 
@@ -248,23 +252,24 @@ def forward(origin, text, *, quoted_request_id=None):
                                 creationflags=NO_WINDOW)
         if result.returncode:
             raise RuntimeError('Codex rejected queueing to the original session')
-        return {'provider':'codex','session_id':session_id,'accepted':True,
-                'resume_warning':bool(result.stderr.strip()),'detail':result.stdout[-1000:]}
+        resume_warning=bool(result.stderr.strip())
+        return {'provider':'codex','session_id':session_id,'accepted':True,'stage':'queued' if resume_warning else 'accepted',
+                'resume_warning':resume_warning,'detail':result.stdout[-1000:]}
     if origin['source']=='claude':
         if origin.get('target_kind')=='claude_peer':
             name=origin.get('name')
             if not name or not origin.get('peer_ref'):
-                raise RuntimeError('Original Claude app peer identity is unavailable')
+                raise SessionUnavailable('PC의 Claude에서 원래 작업을 열고 톡턴 목록을 새로고침하세요.')
         else:
             result = subprocess.run([executable('claude'),'agents','--json','--all'],
                 capture_output=True,encoding='utf-8',timeout=20,creationflags=NO_WINDOW)
             rows=json.loads(result.stdout)
             targets=[item for item in rows if item.get('sessionId')==session_id]
             if len(targets)!=1 or not targets[0].get('name'):
-                raise RuntimeError('Original Claude session is unavailable')
+                raise SessionUnavailable('PC의 Claude에서 원래 작업을 열고 톡턴 목록을 새로고침하세요.')
             name=targets[0]['name']
             if sum(item.get('name')==name for item in rows)!=1:
-                raise RuntimeError('Claude session name is ambiguous')
+                raise SessionUnavailable('같은 이름의 Claude 작업이 있습니다. PC에서 작업을 구분한 뒤 목록을 새로고침하세요.')
         for _ in range(2):
             result=subprocess.run(module_command('claude_transport', 'send'),
                 input=json.dumps({'name':name,'message':text,'expected_ref':origin.get('peer_ref')},ensure_ascii=False),
@@ -280,29 +285,32 @@ def forward(origin, text, *, quoted_request_id=None):
     raise ValueError('Unsupported original session provider')
 
 
-def _reply_log(stage,detail,session_id=None,gate=None):
-    """Why a reply stopped. The status file is overwritten every five seconds, so failures left no trace.
-
-    Local only: a failure is never announced in the chat, and success only after the session accepted it."""
+def _reply_log(stage,detail,session_id=None,gate=None,*,connection=None):
+    """Keep diagnostics local. Only scoped stage names and times are used for receipt queries."""
     try:
-        write_json('reply-log.json',(read_json('reply-log.json',[])+[{'time':time.time(),'stage':stage,
-                   'detail':str(detail).strip()[-300:],'session_id':session_id,'gate':gate}])[-50:])
+        event={'time':time.time(),'stage':stage,'detail':str(detail).strip()[-300:],
+               'session_id':session_id,'gate':gate}
+        if connection is not None:
+            epoch=[value or 0 for value in connection[:2]]
+            write_json('last-reply-state.json',{'time':event['time'],'stage':stage,'connection_at':epoch})
+        write_json('reply-log.json',(read_json('reply-log.json',[])+[event])[-50:])
     except Exception:
         pass
 
 
-def _reply_ack(origin,key):
+def _reply_ack(origin,key,stage='accepted'):
+    from .commands import QUEUED_NOTICE
     from .plain_delivery import deliver
     from .result_format import session_heading,_title
     try:
         heading=session_heading(origin) or '['+(_title(origin.get('title')) or _title(origin.get('name')) or '제목 없는 작업')+']'
-        deliver(heading+'\n전달되었습니다.','reply-ack-'+key,render_long=False)
+        deliver(heading+'\n'+(QUEUED_NOTICE if stage=='queued' else '전달되었습니다.'),'reply-ack-'+key,render_long=False)
         return {'ack_sent':True}
     except Exception as error:
         return {'ack_sent':False,'ack_error':type(error).__name__}
 
 
-def _unrouted(message,key,image_path,classifications,stage=None):
+def _unrouted(message,key,image_path,classifications,stage=None,*,connection=None):
     """Record why a consumed message went nowhere and keep its capture. Nothing is sent to the chat."""
     kind=message_kind(message,image_path,classifications)
     kept=''
@@ -318,7 +326,7 @@ def _unrouted(message,key,image_path,classifications,stage=None):
         except OSError:
             pass
     _reply_log(stage or ('unmatched_reply' if kind=='reply' else 'not_isolated' if kind is None else 'plain_note'),kept,
-               gate='>'.join(classifications.pop('stopped',[])) or None)
+               gate='>'.join(classifications.pop('stopped',[])) or None,connection=connection if kind=='reply' else None)
 
 
 def _remember_messages(hashes):
@@ -333,7 +341,8 @@ def _connection_identity(settings):
 
 
 def poll_once(require_enabled=False):
-    from .commands import parse, execute
+    from .commands import parse, execute, send_numbered, forward_response
+    from .questions import AnswerRejected
     from .plain_delivery import complete_reply,deliver,pending_replies,reply_candidates
     if require_enabled and (not (ROOT/'reply-enabled').exists() or not pending_replies()):
         return {'new':0,'forwarded':0,'waiting_for_result':True}
@@ -386,7 +395,7 @@ def poll_once(require_enabled=False):
                 _remember_messages(seen_list)
                 if image_path is None:
                     image_path=screenshot()
-                _unrouted(message,key,image_path,classifications,'duplicate_body')
+                _unrouted(message,key,image_path,classifications,'duplicate_body',connection=connection)
             continue
         if message.get('is_photo') or message.get('is_file') or message['text'].strip() in outgoing_parts:
             seen.add(key)
@@ -404,7 +413,7 @@ def poll_once(require_enabled=False):
                 write_json('reply-status.json',{'status':'unverified_command_bubble','time':time.time()})
                 # The status file is overwritten within seconds; without a log line and the capture
                 # an ignored command leaves nothing to look at.
-                classifications['stopped']=[classifications.get('isolate_stop') or 'bubble_not_proven_plain']
+                classifications['stopped']=[classifications.get('plain_stop') or classifications.get('isolate_stop') or 'bubble_not_proven_plain']
                 _unrouted(message,key,image_path,classifications,'unverified_command')
                 continue
         if command is None:
@@ -428,24 +437,69 @@ def poll_once(require_enabled=False):
             _remember_messages(seen_list)
             if require_enabled and not (ROOT/'reply-enabled').exists():
                 return {'new':len(new),'forwarded':len(forwarded),'stopped':True}
+            if _connection_identity(read_json('delivery.json',{}))!=connection:
+                continue
+            selected_send=command[0]=='tell' and len(command)==2
+            def still_current():
+                return (_connection_identity(read_json('delivery.json',{}))==connection
+                        and (not require_enabled or (ROOT/'reply-enabled').exists()))
             try:
                 if command[0]=='answer':
                     raise ValueError('해당 질문 말풍선에 답장해 주세요. 독립된 응답 명령으로는 처리하지 않습니다.')
-                response=execute(command,remote=True)
+                stage='accepted'
+                if command[0]=='send' and len(command)==3:
+                    _reply_log('dispatching','',connection=connection)
+                    receipt=send_numbered(*command[1:])
+                    stage='queued' if receipt.get('stage')=='queued' else 'accepted'
+                    response=forward_response(receipt)
+                elif selected_send:
+                    from .sessions import forward_selected
+                    from .result_format import _title
+                    _reply_log('dispatching','',connection=connection)
+                    name,receipt=forward_selected(command[1],still_current=still_current)
+                    stage='queued' if receipt.get('stage')=='queued' else 'accepted'
+                    response=(_title(name) or '선택한 작업')+'\n'+forward_response(receipt)
+                else:
+                    response=execute(command,remote=True)
             except (ValueError, RuntimeError, TimeoutError, OSError) as error:
-                response='TalkTurn: '+(str(error) if isinstance(error,(ValueError,RuntimeError)) else type(error).__name__)
+                if selected_send and not still_current():
+                    continue
+                if command[0]=='send' or selected_send:
+                    stage='not_sent' if isinstance(error,SessionUnavailable) else 'forward_failed'
+                    _reply_log(stage,'',connection=connection)
+                if selected_send:
+                    response=('전달되지 않았습니다. 보낼 작업을 확인하세요.' if stage=='not_sent' else
+                              '접수 미확인. 다시 보내기 전에 PC의 작업 창을 확인하세요.')
+                else:
+                    response='TalkTurn: '+(str(error) if isinstance(error,(ValueError,RuntimeError)) else type(error).__name__)
             else:
+                if selected_send:
+                    if not still_current():
+                        continue
+                    _reply_log(stage,'',connection=connection)
                 matches=[item for item in registry if len(command)==3 and (
                     command[0]=='answer' and item.get('origin',{}).get('request_id','').upper()==command[1].upper()
                     or command[0]=='send' and 'T'+item.get('id','')[:8].upper()==command[1].upper())]
                 if len(matches)==1:
+                    if _connection_identity(read_json('delivery.json',{}))!=connection:
+                        continue
+                    _reply_log(stage,'',connection=connection)
                     complete_reply(matches[0])
-                    ack=_reply_ack(matches[0]['origin'],key)
+                    ack=_reply_ack(matches[0]['origin'],key,stage)
                     write_json('last-command.json',{'command':command[0],'time':time.time(),
-                               'accepted':True,'response_sent':ack['ack_sent'],**ack})
+                               'accepted':True,'stage':stage,'response_sent':ack['ack_sent'],**ack})
                     continue
+            if _connection_identity(read_json('delivery.json',{}))!=connection:
+                continue
             if response:
-                deliver(response,'command-'+key)
+                if command[0]=='original':
+                    from .plain_delivery import deliver_original
+                    if not deliver_original(response,command[1:],'command-'+key,connection):
+                        continue
+                elif selected_send:
+                    deliver(response,'command-'+key,render_long=False,literal_text=True)
+                else:
+                    deliver(response,'command-'+key)
             write_json('last-command.json',{'command':command[0],'time':time.time(),'response_sent':bool(response)})
             continue
         if not registry:
@@ -485,26 +539,41 @@ def poll_once(require_enabled=False):
                     or current.get('reply_mode','luna')=='manual'
                     or not any(item.get('id')==target['id'] and item.get('origin')==target['origin']
                                for item in reply_candidates())):
-                _reply_log('routing_changed',key[:16],target['origin'].get('session_id'))
+                _reply_log('routing_changed',key[:16],target['origin'].get('session_id'),connection=connection)
                 continue
+            _reply_log('dispatching','',connection=connection)
             try:
                 receipt=(forward(target['origin'],message['text'],quoted_request_id=target.get('_quoted_request_id'))
                          if target['origin'].get('request_id') else forward(target['origin'],message['text']))
                 if not receipt.get('accepted'):
                     raise RuntimeError('원래 세션이 답장 접수를 확인하지 않았습니다.')
+            except (AnswerRejected,SessionUnavailable) as error:
+                # These exceptions occur before dispatch. Transport timeouts have a separate path.
+                _reply_log('not_sent',str(error),connection=connection)
+                if (_connection_identity(read_json('delivery.json',{}))==connection
+                        and (not require_enabled or (ROOT/'reply-enabled').exists())):
+                    deliver('TalkTurn 답장 안내\n이 답장은 접수되지 않았습니다. '+str(error),
+                            'reply-not-sent-'+key,render_long=False)
+                continue
             except Exception as error:
                 # Already consumed, so it is never retried by itself: record why.
-                _reply_log('forward_failed',type(error).__name__+': '+str(error),target['origin'].get('session_id'))
+                _reply_log('forward_failed',type(error).__name__+': '+str(error),target['origin'].get('session_id'),connection=connection)
                 raise
+            stage='queued' if receipt.get('stage')=='queued' else 'accepted'
+            _reply_log(stage,'',connection=connection)
             complete_reply(target)
             receipt.update({'message_sha256':hashlib.sha256(message['text'].encode('utf-8')).hexdigest(),'received_at':time.time()})
-            receipt.update(_reply_ack(target['origin'],key))
+            if (_connection_identity(read_json('delivery.json',{}))==connection
+                    and (not require_enabled or (ROOT/'reply-enabled').exists())):
+                receipt.update(_reply_ack(target['origin'],key,stage))
+            else:
+                receipt.update(ack_sent=False)
             forwarded.append(receipt)
             write_json('last-forward.json',receipt)
             write_json('reply-receipts.json',(read_json('reply-receipts.json',[])+[receipt])[-100:])
         else:
             (ROOT/'reply-status.json').write_text(json.dumps({'status':'unmatched_or_not_a_reply','time':time.time()}),encoding='utf-8')
-            _unrouted(message,key,image_path,classifications)
+            _unrouted(message,key,image_path,classifications,connection=connection)
     _remember_messages(seen_list)
     return {'new':len(new),'forwarded':len(forwarded),'receipts':forwarded}
 

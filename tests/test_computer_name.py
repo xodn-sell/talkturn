@@ -15,6 +15,7 @@ class ComputerNameTest(unittest.TestCase):
         self.addCleanup(self.stack.close)
         self.root=Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
         self.stack.enter_context(patch.object(runtime,'ROOT',self.root))
+        self.stack.enter_context(patch.object(cli,'confirm_connection',return_value=True))
         self.console=Console(file=io.StringIO(),force_terminal=True,legacy_windows=False,width=80,height=24)
         self.stack.enter_context(patch.object(cli,'console',self.console))
 

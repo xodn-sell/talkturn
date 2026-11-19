@@ -19,10 +19,27 @@ RELAY_MODELS={'1':'gpt-6-luna','luna':'gpt-6-luna','gpt-6-luna':'gpt-6-luna',
 def choose_relay_model():
     current=read_json('delivery.json',{}).get('model','gpt-6-luna')
     from .terminal import choice_menu
-    choices=[('gpt-6-luna','GPT-6 Luna · 기존 Codex 로그인 사용'),
-             ('claude-haiku-5-5','Claude Haiku 5.5 · 기존 Claude 로그인 사용')]
-    chosen=choice_menu(console,'카톡 답장 중계 모델',choices,selected=1 if current=='claude-haiku-5-5' else 0)
-    return chosen
+    choices=[('gpt-6-luna','GPT-6 Luna · Codex 로그인 및 사용량 적용'),
+             ('claude-haiku-5-5','Claude Haiku 5.5 · Claude 로그인 및 사용량 적용')]
+    return choice_menu(console,'카톡 답장을 어느 작업으로 보낼지 판단할 AI',choices,
+                       selected=1 if current=='claude-haiku-5-5' else 0)
+
+
+def needs_relay_choice(settings):
+    return (not settings.get('model') and settings.get('reply_mode')!='manual'
+            and settings.get('reply_routing_enabled',True))
+
+
+def confirm_connection():
+    if os.name!='nt' or not sys.stdin.isatty():
+        return True
+    from .mouse_lock import HOLD,active
+    if active():
+        return True
+    from .terminal import choice_menu
+    warning=('연결하면 이 PC의 마우스와 터치패드가 잠깁니다.\n'
+             f'Esc를 {HOLD:g}초간 누르면 잠금이 풀리고 카톡 연결이 종료됩니다.')
+    return bool(choice_menu(console,'카카오톡에 연결할까요?',[(True,warning)],subtitle='Enter 연결 · Esc 취소'))
 
 
 def save_relay(model):
@@ -32,18 +49,25 @@ def save_relay(model):
         write_json('delivery.json',data)
 
 
-def edit_computer_name():
-    from .computer import computer_name,computer_label,set_computer_name
+def ask_computer_name():
+    from .computer import computer_name
     current=computer_name()
     try:
         value=console.input(f'컴퓨터 이름 [Enter: {current}]: ',markup=False)
     except (KeyboardInterrupt,EOFError):
-        return '컴퓨터 이름 변경 취소.'
-    set_computer_name(value if value else current)
+        return None
+    return value or current
+
+
+def edit_computer_name():
+    from .computer import computer_label,set_computer_name
+    value=ask_computer_name()
+    if value is None: return '컴퓨터 이름 변경 취소.'
+    set_computer_name(value)
     return computer_label()
 
 
-def setup(args):
+def setup(args, *, commit_selection=None):
     from . import service
     parser = argparse.ArgumentParser(prog='talkturn setup')
     parser.add_argument('--self-chat', help='사용자가 직접 연 나와의 채팅의 정확한 창 이름')
@@ -54,27 +78,9 @@ def setup(args):
     parser.add_argument('--section',type=str.lower,choices=['claude','codex','chatgpt','agy','antigravity','안티그래비티','all'],help='처음 표시할 AI 섹션')
     parser.add_argument('--computer-name',help='TalkTurn에 표시할 이 컴퓨터의 이름 (기본: 내 PC)')
     options = parser.parse_args(args)
-    relay_model=RELAY_MODELS.get(options.relay_model)
-    if relay_model is None and sys.stdin.isatty():
-        relay_model=choose_relay_model()
-        if relay_model is None: return '설정 취소.'
-    if options.computer_name is not None and not options.migrate:
-        from .computer import set_computer_name
-        set_computer_name(options.computer_name)
-    elif not options.self_chat and not options.migrate and sys.stdin.isatty():
-        prior=read_json('delivery.json',{})
-        if not prior.get('computer_name') and not prior.get('window_id'):
-            if edit_computer_name()=='컴퓨터 이름 변경 취소.':
-                return '설정 취소.'
-    if options.migrate:
-        service.migrate_legacy()
-        if options.computer_name is not None:
-            from .computer import set_computer_name
-            set_computer_name(options.computer_name)
-        service.pair(read_json('delivery.json',{})['room_name'])
-    else:
-        title = options.self_chat
-        existing=read_json('delivery.json',{})
+    existing=read_json('delivery.json',{})
+    title = options.self_chat
+    if not options.migrate:
         reuse=not title and existing.get('window_id') and not service.delivery_issues(include_worker=False)
         if reuse:
             title=existing['room_name']
@@ -94,8 +100,26 @@ def setup(args):
             if not answer.isdigit() or not 1 <= int(answer) <= len(rows):
                 raise ValueError('목록의 번호 입력 필요.')
             title = rows[int(answer)-1]['title']
-        if not reuse:
-            service.pair(title)
+    relay_model=RELAY_MODELS.get(options.relay_model)
+    if not relay_model and needs_relay_choice(existing) and sys.stdin.isatty():
+        relay_model=choose_relay_model()
+        if relay_model is None: return '설정 취소.'
+    name=options.computer_name
+    if name is None and not options.self_chat and not options.migrate and sys.stdin.isatty():
+        if not existing.get('computer_name') and not existing.get('window_id'):
+            name=ask_computer_name()
+            if name is None: return '설정 취소.'
+    if not confirm_connection():
+        return '연결 취소.'
+    if options.migrate:
+        service.migrate_legacy()
+    if name is not None:
+        from .computer import set_computer_name
+        set_computer_name(name)
+    if options.migrate:
+        service.pair(read_json('delivery.json',{})['room_name'])
+    elif not reuse:
+        service.pair(title)
     if relay_model is not None:
         save_relay(relay_model)
     if options.section:
@@ -105,10 +129,18 @@ def setup(args):
         from .agy_hooks import install
         install()
     service.startup(not options.no_startup)
+    if commit_selection is not None:
+        commit_selection()  # The first verified connection message lists the newly chosen work.
     result = service.start()
     if options.migrate:
         service.bridge_legacy_hook()
-    return result+'\n답장 중계: '+read_json('delivery.json',{}).get('model','gpt-6-luna')
+    settings=read_json('delivery.json',{})
+    relay=settings.get('model','gpt-6-luna')
+    if not settings.get('reply_routing_enabled',True):
+        relay='답장 전달 꺼짐'
+    elif settings.get('reply_mode')=='manual':
+        relay='작업 번호로 전달'
+    return result+'\n답장 중계: '+relay
 
 
 def dispatch(parts):
@@ -140,6 +172,8 @@ def dispatch(parts):
         return f"{parts[1]} · {account['number']}번 {account['label']} 등록 확인."
     if parts[0] == 'setup':
         return setup(parts[1:])
+    if parts==['start'] and not confirm_connection():
+        return '연결 취소.'
     if parts == ['uninstall']:
         from .service import uninstall
         return uninstall()
@@ -147,6 +181,9 @@ def dispatch(parts):
         # Interactive launch stays in the user's terminal. Arguments remain argv, never shell text.
         result = subprocess.run([executable(parts[0]),*parts[1:]])
         return f'{parts[0]} 종료 코드 {result.returncode}'
+    if parts[0]=='update' and len(parts)<=2:
+        from .updater import update
+        return update(console,parts[1] if len(parts)==2 else None)
     if parts[0] == 'startup' and len(parts)==2 and parts[1] in ('on','off'):
         from .service import startup
         startup(parts[1]=='on')
@@ -157,11 +194,18 @@ def dispatch(parts):
 def interactive():
     from .terminal import show_dashboard,response,keyboard_pick,page_rows
     from .sessions import choose,selected,selection_text
-    if not read_json('delivery.json',{}).get('model'):
-        model=choose_relay_model()
-        if model is None: return
-        save_relay(model)
-    view=show_dashboard(console,render=False)
+    fresh=True
+
+    def load(render=False):
+        # Until this run's first Enter nothing is pre-checked: old checks (often ended, unlisted
+        # sessions) were invisible and got connected along with the new ones. Saved state is untouched.
+        loaded=show_dashboard(console,render=render)
+        if fresh and loaded.get('watched'):
+            loaded['action_notice']=f"지금 카톡 연결 {len(loaded['watched'])}개 · Enter 시 이번에 체크한 작업만 연결"
+            loaded['watched']=[]
+        return loaded
+
+    view=load()
 
     def pick(value):
         if value.isdigit():
@@ -201,53 +245,64 @@ def interactive():
                 message=str(error)
             response(console,message)
             if value['action']!='computer-name' and message not in ('계정 전환 취소.','계정 추가 취소.','모델 변경 취소.','연결 추가 취소.'):
-                view=show_dashboard(console,render=False)
+                view=load()
             view.update({'active_provider':provider,'draft_checked_codes':value.get('checked_codes',[]),
                          'action_notice':message.splitlines()[0] if message else ''})
             return False
         elif isinstance(value,list):
             from .sessions import watch_many,watched
+            from .service import delivery_issues,selection_update
             previous=watched()
-            rows=watch_many(value,{'rows':view['rows'],'fetched_at':time.time()})
-            view.update({'watched':rows,'selected':selected()})
-            message=f'결과 수신 {len(rows)}개 작업 확정'
-            announce_update=not rows
-            if rows:
-                from .service import delivery_issues
-                try:
-                    issues=delivery_issues()
-                    reconnected=False
-                    unavailable=any(issue.startswith(('나와의 채팅 닫힘','카카오톡 꺼짐')) for issue in issues)
-                    if issues and not unavailable:
-                        model=read_json('delivery.json',{}).get('model')
-                        result=setup(['--relay-model',model] if model in ('gpt-6-luna','claude-haiku-5-5') else [])
-                        reconnected=True
-                        issues=delivery_issues()
-                        unavailable=(result.startswith('나와의 채팅 창이 없습니다') or
-                                     any(issue.startswith(('나와의 채팅 닫힘','카카오톡 꺼짐')) for issue in issues))
-                        if issues and not unavailable:
-                            message+=' · '+result.splitlines()[0]
-                    view['kakao_issues']=issues
-                    if unavailable:
+            view['draft_checked_codes']=list(value)
+
+            def commit_selection():
+                nonlocal fresh
+                rows=watch_many(value,{'rows':view['rows'],'fetched_at':time.time()})
+                fresh=False
+                view.update({'watched':rows,'selected':selected(),'action_notice':f'결과 수신 {len(rows)}개 작업 확정'})
+                view.pop('draft_checked_codes',None)
+
+            try:
+                issues=delivery_issues() if value else []
+                view['kakao_issues']=issues
+                if value and issues:
+                    result=''
+                    if not any(issue.startswith(('나와의 채팅 닫힘','카카오톡 꺼짐')) for issue in issues):
+                        result=setup([],commit_selection=commit_selection)
+                    if not result or result.startswith('나와의 채팅 창이 없습니다'):
                         view['connection_alert']='카톡 ‘나와의 채팅’을 열어주세요'
                         view.pop('action_notice',None)
+                    elif 'draft_checked_codes' in view:
+                        view['action_notice']=result
+                    else:
+                        issues=delivery_issues()
+                        view['kakao_issues']=issues
+                        view['action_notice']+=' · '+(issues[0] if issues else '카톡 연결됨')
+                    return False
+                if value:
+                    settings=read_json('delivery.json',{})
+                    model=None
+                    if needs_relay_choice(settings):
+                        model=choose_relay_model()
+                        if model is None:
+                            view['action_notice']='모델 선택 취소.'
+                            return False
+                    if not confirm_connection():
+                        view['action_notice']='연결 취소.'
                         return False
-                    if not issues:
-                        message+=' · 카톡 연결됨'
-                        announce_update=not reconnected
-                        from .mouse_lock import engage
-                        if engage():
-                            message+=' · 마우스 잠금(Esc 길게=해제·out)'
-                except (ValueError,RuntimeError,OSError,TimeoutError) as error:
-                    message+=' · 연결 실패: '+str(error)
-            if announce_update:
-                from .service import selection_update
-                try:
-                    if selection_update(previous):
-                        message+=' · talkturn update 전송 확인'
-                except (ValueError,RuntimeError,OSError,TimeoutError) as error:
-                    message+=' · 변경 알림 실패: '+str(error)
-            view['action_notice']=message
+                    if model:
+                        save_relay(model)
+                commit_selection()
+                if value:
+                    from .mouse_lock import engage
+                    view['action_notice']+=' · 카톡 연결됨'
+                    if engage():
+                        view['action_notice']+=' · 마우스 잠금(Esc 2.5초로 해제·종료)'
+                if selection_update(previous):
+                    view['action_notice']+=' · talkturn update 전송 확인'
+            except (ValueError,RuntimeError,OSError,TimeoutError) as error:
+                prefix='작업 선택을 저장했습니다. ' if 'draft_checked_codes' not in view else '작업 선택을 확정하지 못했습니다. '
+                view['action_notice']=prefix+str(error)
             return False
         elif value:
             row=pick(value)
@@ -273,7 +328,7 @@ def interactive():
             label=current['code'] if current else '전송 대상 미선택'
             text = console.input(f'\n[bright_white]명령 ›[/bright_white] [grey62]{label}[/grey62] ').strip()
             if not text:
-                view=show_dashboard(console,render=False)
+                view=load()
                 selection_screen()
                 continue
             shortcut={'a':'account-add','s':'switch','m':'relay','n':'computer-name',
@@ -290,10 +345,10 @@ def interactive():
             if parts in (['quit'],['exit'],['q']):
                 break
             if parts in (['status'],['sessions']):
-                view=show_dashboard(console)
+                view=load(render=True)
                 continue
             if parts==['select']:
-                view=show_dashboard(console,render=False)
+                view=load()
                 selection_screen()
                 continue
             if len(parts)==2 and parts[0]=='select':
@@ -317,7 +372,7 @@ def main():
         if args in (['--version'],['-V']):
             console.print(__version__)
         elif args in (['--help'],['-h']):
-            console.print(HELP+'\n\n터미널 전용: connect [claude|codex|agy] / setup-agy / setup [--self-chat 이름] [--relay-model luna|haiku] [--computer-name 이름] [--section claude|chatgpt|agy|all] / account-add claude|codex / start / stop / startup on|off / uninstall / codex / claude / agy [인수]\nAGY 별칭: antigravity / 안티그래비티. AGY 계정 추가·전환은 지원하지 않습니다.',markup=False)
+            console.print(HELP+'\n\n터미널 전용: connect [claude|codex|agy] / setup-agy / setup [--self-chat 이름] [--relay-model luna|haiku] [--computer-name 이름] [--section claude|chatgpt|agy|all] / account-add claude|codex / start / stop / startup on|off / update [버전] / uninstall / codex / claude / agy [인수]\nAGY 별칭: antigravity / 안티그래비티. AGY 계정 추가·전환은 지원하지 않습니다.',markup=False)
         elif not args:
             if sys.stdin.isatty():
                 interactive()

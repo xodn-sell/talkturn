@@ -47,14 +47,15 @@ class AccountMenuTest(unittest.TestCase):
             self.assertIn('이미 사용 중',account_menu.switch(Console(file=io.StringIO())))
             switch.assert_not_called()
         with tempfile.TemporaryDirectory() as folder,patch.object(runtime,'ROOT',Path(folder)), \
-             patch.object(cli,'choose_relay_model',return_value='claude-haiku-5-5'), \
+             patch.object(cli,'confirm_connection',return_value=True),patch.object(cli,'choose_relay_model') as relay, \
              patch.object(cli.sys.stdin,'isatty',return_value=True), \
              patch.object(service,'delivery_issues',return_value=[]),patch.object(service,'pair') as pair, \
              patch.object(service,'chat_windows') as rooms,patch.object(service,'install_hooks'),patch.object(service,'startup'), \
              patch.object(service,'start',return_value='connected'):
             runtime.write_json('delivery.json',{'window_id':1,'room_name':'Self','model':'gpt-6-luna'})
-            self.assertIn('claude-haiku-5-5',cli.setup(['--no-startup']))
-            self.assertEqual(runtime.read_json('delivery.json')['model'],'claude-haiku-5-5')
+            self.assertIn('gpt-6-luna',cli.setup(['--no-startup']))
+            self.assertEqual(runtime.read_json('delivery.json')['model'],'gpt-6-luna')
+            relay.assert_not_called()
             pair.assert_not_called(); rooms.assert_not_called()
 
     def test_ten_row_pages_use_local_numbers_and_keep_the_tenth_row_visible(self):

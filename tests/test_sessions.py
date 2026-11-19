@@ -213,7 +213,7 @@ class ExistingSessionsTest(unittest.TestCase):
                     self.assertIn('claude-first',text); self.assertNotIn('codex-only',text)
                 else:
                     self.assertNotIn('claude-first',text)
-                    self.assertIn('codex-only' if include_codex else '열린 작업 세션 없음',text)
+                    self.assertIn('codex-only' if include_codex else '카톡으로 받을 작업이 없습니다',text)
                 frames.append((active,state['focused_code']))
                 return result
             keyboard=SimpleNamespace(getwch=lambda:keys.pop(0),kbhit=lambda:bool(keys))
@@ -245,6 +245,9 @@ class ExistingSessionsTest(unittest.TestCase):
              patch.dict('sys.modules',{'msvcrt':keyboard}),patch.object(tasks,'snapshot',return_value=view), \
              patch.object(cli,'console',console),patch.object(console,'status'), \
              patch.object(console,'input',return_value='quit'),patch.object(sessions,'watch_many',return_value=[]) as watch, \
+             patch.object(cli,'confirm_connection',return_value=True),patch.object(cli,'choose_relay_model',return_value='gpt-6-luna'), \
+             patch('talkturn.service.delivery_issues',return_value=[]),patch('talkturn.service.selection_update',return_value=False), \
+             patch('talkturn.mouse_lock.engage',return_value=False), \
              patch.object(sessions,'watch_text',return_value='selection saved'), \
              patch.object(console,'update_screen_lines',wraps=console.update_screen_lines) as updates:
             cli.interactive()
@@ -286,6 +289,55 @@ class ExistingSessionsTest(unittest.TestCase):
                 self.assertIn('입력:',lines[height-2])
                 self.assertTrue(any('Task 10' in text for text in lines.values()))
                 self.assertTrue(any('컴퓨터 이름 수정' in text for text in lines.values()))
+
+    def test_narrow_picker_keeps_drafts_and_shows_questions_and_empty_state(self):
+        import io
+        from rich.console import Console
+        from talkturn import terminal
+        first=dict(row('claude',FIRST,'결제 수정'),cwd='C:/shop/app')
+        second=dict(row('claude',SECOND,'결제 수정'),cwd='C:/shop/admin',reachable=False)
+        question={'id':'Q1234ABCD','provider':'claude','kind':'question','payload':{'tool_input':{
+                  'questions':[{'question':'어떤 화면을 고칠까요?','options':[{'label':'결제'}]}]}}}
+        view={'rows':[first,second],'watched':[],'waiting':[question],'usage':{}}
+        console=Console(file=io.StringIO(),force_terminal=True,legacy_windows=False,width=52,height=24)
+        screen={}; frames=[]
+        keys=iter([' ','down','q','\x1b','right','\r'])
+        def update(lines,y):
+            screen[y]=''.join(segment.text for line in lines for segment in line)
+        def read(*args):
+            frames.append('\n'.join(screen[y] for y in sorted(screen)))
+            return next(keys)
+        with patch.object(terminal.sys.stdin,'isatty',return_value=True), \
+             patch.object(console,'update_screen_lines',side_effect=update),patch.object(terminal,'_read_key',side_effect=read), \
+             patch.dict('sys.modules',{'msvcrt':Mock(kbhit=lambda:False)}):
+            self.assertEqual(terminal.keyboard_pick(console,view),[first['code']])
+        for value in ('app','admin','[Enter]','[Esc]','[R]','[?]','[Q]'):
+            self.assertIn(value,frames[0])
+        self.assertIn('전체 1개 체크',frames[2])
+        self.assertNotIn('답장 연결',frames[2])
+        self.assertIn('어떤 화면을 고칠까요?',frames[3])
+        self.assertIn('1) 결제',frames[3])
+        self.assertEqual(frames[2],frames[4])
+        self.assertIn('Codex에서 작업을 연 뒤 [R] 새로고침',frames[5])
+        self.assertNotIn('받을 작업 미선택',frames[5])
+        self.assertIn('전체 1개 체크',frames[5])
+
+    def test_short_picker_with_alerts_keeps_connection_and_input_visible(self):
+        import io
+        from rich.console import Console
+        from talkturn import terminal
+        rows=[row('claude',f'task-{i}',f'작업 {i}') for i in range(10)]
+        view={'rows':rows,'watched':[],'waiting':[{'provider':'claude','kind':'question','id':'Q00000001'}],
+              'usage':{},'kakao_issues':['카카오톡 꺼짐 · 카카오톡을 켜세요.'],
+              'session_errors':{'claude':'Claude 메시지 수신 연결을 확인하지 못함.'}}
+        console=Console(file=io.StringIO(),force_terminal=True,legacy_windows=False,width=52,height=24)
+        with patch.object(terminal.sys.stdin,'isatty',return_value=True),patch.object(console,'update_screen_lines') as output, \
+             patch.dict('sys.modules',{'msvcrt':Mock(kbhit=lambda:False)}),patch.object(terminal,'_read_key',return_value='\x1b'):
+            terminal.keyboard_pick(console,view)
+        lines={call.kwargs['y']:''.join(s.text for line in call.args[0] for s in line) for call in output.call_args_list}
+        self.assertIn('번호/코드 입력:',lines[22])
+        self.assertTrue(any('[Enter]' in line and '[R]' in line and '[Esc]' in line for i,line in lines.items() if i<22))
+        self.assertTrue(any('[Q]' in line for line in lines.values()))
 
     def test_multiple_watches_filter_completion_and_questions_without_broadcasting(self):
         import io,json
@@ -350,7 +402,7 @@ class ExistingSessionsTest(unittest.TestCase):
         output=io.StringIO(); console=Console(file=output,width=110,color_system=None)
         view={'rows':rows,'selected':None,'watched':[],'waiting':[],'usage':{}}
         terminal.dashboard(console,view)
-        self.assertIn('번호',output.getvalue()); self.assertIn('세션 이름',output.getvalue())
+        self.assertIn('번호',output.getvalue()); self.assertIn('카톡으로 받을 작업',output.getvalue())
         self.assertIn('[ ] desktop task',output.getvalue())
         self.assertNotIn('claude-opus-5-5',output.getvalue()); self.assertNotIn('xhigh',output.getvalue())
         self.assertNotIn('추론 강도',output.getvalue()); self.assertNotIn('저장/최근 확인값',output.getvalue())

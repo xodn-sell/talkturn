@@ -1,4 +1,4 @@
-include README.md CONTRIBUTING.md ROADMAP.md RELEASE_NOTES.md LICENSE THIRD_PARTY_LICENSES.txt TRADEMARKS.md uv.lock
+include README.md docs/GUIDE.md CONTRIBUTING.md ROADMAP.md RELEASE_NOTES.md LICENSE THIRD_PARTY_LICENSES.txt TRADEMARKS.md uv.lock
 recursive-include tests *.py *.png
 recursive-include .github *.yml
 prune src/talkturn/ui

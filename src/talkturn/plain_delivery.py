@@ -256,12 +256,76 @@ def reply_candidates():
                  and not item['origin'].get('request_id') and _can_await_reply(item['origin']))]
 
 
-def deliver(text: str, event_key: str = '', cwd: str = '', images: list[str] | None = None, origin: dict | None = None, *, render_long=True) -> bool:
+def original_text(args):
+    """Select only completed results already sent in this verified connection."""
+    from datetime import datetime
+    from .result_format import _title
+    from .sessions import watched
+
+    if len(args)>1 or args and not re.fullmatch(r'T[0-9A-Fa-f]{8,64}',args[0],re.I):
+        return '사용법: 원문 또는 원문 T번호'
+    settings=read_json('delivery.json',{})
+    connection=read_json('connection.json',{})
+    if (not (ROOT/'reply-enabled').exists() or connection.get('verified') is not True or not connection.get('at')
+            or any(not settings.get(field) or settings[field]!=connection.get(field) for field in ('window_id','process_id'))):
+        return '카톡 연결이 없습니다.'
+    started=max(connection['at'],settings.get('reply_enabled_at',0))
+    watches={_reply_identity({**row,'source':row.get('provider')}):row for row in watched()}
+    records=[]
+    identifiers=[]
+    for item in reversed(read_json('result-origins.json',[])):
+        origin=item.get('origin',{})
+        if origin.get('kind')!='result' or origin.get('request_id') or not item.get('id'):
+            continue
+        identifier=item['id']
+        # AGY worker result keys include a prefix; their public code must still be hexadecimal.
+        code=(identifier if re.fullmatch(r'[0-9a-fA-F]{8,64}',identifier)
+              else hashlib.sha256(identifier.encode()).hexdigest()).upper()
+        identifiers.append(code)
+        identity=_reply_identity(origin)
+        watch=watches.get(identity)
+        if (not identity or not watch or item.get('sent_at',0)<started or not item.get('text')
+                or origin.get('peer_ref') and origin['peer_ref']!=watch.get('peer_ref')):
+            continue
+        title=_title(watch.get('name')) or _title(origin.get('title')) or '제목 없는 작업'
+        records.append((code,title,item))
+    if args:
+        prefix=args[0][1:].upper()
+        matches=[item for code,_,item in records if code.startswith(prefix)]
+        if len(matches)==1 and sum(code.startswith(prefix) for code in identifiers)==1:
+            return matches[0]['text']
+        return '이 번호의 원문이 없습니다. ‘원문’으로 목록을 확인하세요.'
+    if not records:
+        return '선택한 작업에서 받은 원문이 없습니다.'
+    if len(records)==1 and len(watches)==1:
+        return records[0][2]['text']
+    lines=['연결 안내에 ‘원문 T번호’로 답장하세요.']
+    for code,title,item in records:
+        # Extend a displayed prefix only when retained results have the same short code.
+        length=8
+        while length<len(code) and sum(other.startswith(code[:length]) for other in identifiers)>1:
+            length+=1
+        moment=datetime.fromtimestamp(item['sent_at']).strftime('%m/%d %H:%M:%S')
+        lines.append(f'T{code[:length]} · {title} · {moment}')
+    return '\n'.join(lines)
+
+
+def deliver_original(text,args,event_key,connection):
+    """A result may have been unchecked or the chat rebound during command recognition."""
+    from .reply_bridge import _connection_identity
+    from .runtime import locked
+    with locked('settings.lock'),locked('view.lock'):
+        if connection!=_connection_identity(read_json('delivery.json',{})) or original_text(args)!=text:
+            return False
+        return deliver(text,event_key,render_long=False,literal_text=True)
+
+
+def deliver(text: str, event_key: str = '', cwd: str = '', images: list[str] | None = None, origin: dict | None = None, *, render_long=True, literal_text=False) -> bool:
     from .runtime import locked
     settings = json.loads((ROOT / 'delivery.json').read_text(encoding='utf-8'))
     if settings.get('mode') != 'native':
         raise RuntimeError('Native delivery must be enabled')
-    source, linked_images = extract_images(text, cwd)
+    source, linked_images = (text,[]) if literal_text else extract_images(text, cwd)
     attachments = list(dict.fromkeys((images or []) + linked_images))
     for image in attachments:
         path = Path(image).resolve()
@@ -289,6 +353,8 @@ def deliver(text: str, event_key: str = '', cwd: str = '', images: list[str] | N
         body=prepared[len(heading):].removeprefix('\n\n') if heading and prepared.startswith(heading) else prepared
         attachments = (text_images(body,key,heading=heading) if is_result else text_images(prepared,key))+attachments
         prepared = '' if is_result and display=='image' else (heading+'\n\n' if heading else '') + f'TalkTurn 결과 T{key[:8].upper()} · 이미지 {len(attachments)}장'
+        if literal_text:
+            prepared='카톡 대화 내보내기와 같은 형식이 포함되어 원문을 사진으로 보냅니다.'
     if not prepared and not attachments:
         return False
     with locked():

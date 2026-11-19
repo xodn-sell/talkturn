@@ -45,6 +45,34 @@ class ReplyCropTest(unittest.TestCase):
         frame.close()
         return path, {'angle': 0, 'words': words}
 
+    def test_scaled_plain_lookup_requires_exact_body_and_exposed_background(self):
+        path=self.root/'scaled.png'
+        background=(186,206,224)
+        bubble=(254,229,0)
+        frame=Image.new('RGB',(420,200),background)
+        draw=ImageDraw.Draw(frame)
+        draw.rectangle((98,98,297,155),fill=(194,209,196))
+        draw.rectangle((99,99,297,155),fill=(245,226,28))
+        draw.rectangle((100,100,297,155),fill=bubble)
+        draw.rectangle((115,113,216,135),fill=(32,29,0))
+        frame.save(path)
+        word={'line':0,'text':'특턴접수','x':115,'y':113,'width':102,'height':23}
+        ocr={'words':[word]}
+        with patch.object(reply_crop,'_ocr',return_value=ocr):
+            for read,body,kind in [('특턴접수','톡턴 접수','plain'),('특턴원문','톡턴 원문','plain'),
+                                   ('특턴원문T1234abcd','톡턴 원문 T1234ABCD','plain'),
+                                   ('특턴접수','톡턴 원문',None),('특턴종료','톡턴 종료',None)]:
+                word['text']=read
+                self.assertEqual(reply_crop.message_kind({'text':body},path),kind)
+            word['text']='특턴접수'
+            ocr['words'].append(dict(word,line=1,y=40))
+            self.assertIsNone(reply_crop.message_kind({'text':'톡턴 접수'},path))
+            ocr['words'].pop()
+            draw.rectangle((100,75,297,97),fill=(228,219,189))  # attached quote background; OCR missed it
+            frame.save(path)
+            self.assertIsNone(reply_crop.message_kind({'text':'톡턴 접수'},path))
+        frame.close()
+
     def test_only_complete_reply_is_cropped_and_original_body_is_preserved(self):
         path, ocr = self.fixture()
         body = '  진행해\n주세요  '

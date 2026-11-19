@@ -52,21 +52,26 @@ class SectionsAndSetupTest(unittest.TestCase):
         self.assertEqual(commands.parse('claude UPPERCASE'),['claude','UPPERCASE'])
 
     def test_initial_setup_defaults_to_luna_and_can_choose_haiku(self):
-        with patch.object(service,'pair') as pair, patch.object(service,'install_hooks'), \
+        with patch.object(cli,'confirm_connection',return_value=True), \
+             patch.object(service,'pair') as pair, patch.object(service,'install_hooks'), \
              patch.object(service,'startup'),patch.object(service,'start',return_value='connected'), \
              patch.object(cli.sys.stdin,'isatty',return_value=True), \
-             patch('builtins.input',side_effect=['','2']), redirect_stdout(io.StringIO()):
+             patch('builtins.input',side_effect=['','2']) as choose, redirect_stdout(io.StringIO()):
             first=cli.setup(['--self-chat','Self','--section','chatgpt','--no-startup'])
             self.assertEqual(runtime.read_json('delivery.json')['model'],'gpt-6-luna')
             self.assertIn('gpt-6-luna',first)
             self.assertEqual(commands.selected_section(),'codex')
+            second=cli.setup(['--self-chat','Self','--no-startup'])
+            self.assertIn('gpt-6-luna',second)
+            self.assertEqual(choose.call_count,1)
+            runtime.write_json('delivery.json',{})
             second=cli.setup(['--self-chat','Self','--no-startup'])
             self.assertEqual(runtime.read_json('delivery.json')['model'],'claude-haiku-5-5')
             self.assertIn('claude-haiku-5-5',second)
             third=cli.setup(['--self-chat','Self','--relay-model','luna','--no-startup'])
             self.assertIn('gpt-6-luna',third)
             self.assertEqual(runtime.read_json('delivery.json')['model'],'gpt-6-luna')
-            self.assertEqual(pair.call_count,3)
+            self.assertEqual(pair.call_count,4)
 
 
 if __name__=='__main__':

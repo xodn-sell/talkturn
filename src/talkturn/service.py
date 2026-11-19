@@ -143,7 +143,7 @@ def status_text():
              '답장·카톡 명령: ' + ('실행 중' if running and (ROOT/'reply-enabled').exists() else '중지'),
              '중계 모델: ' + settings.get('model', 'gpt-6-luna')]
     lines.append('답장 판별: '+('작업 번호 · LLM 없음' if settings.get('reply_mode')=='manual' else '자동 · 설정된 모델 사용'))
-    lines.append('긴 글 표시: '+settings.get('long_text','auto'))
+    lines.append('긴 글 표시: '+settings.get('long_text','image'))
     if report.get('error'):
         lines.append('최근 수신 확인: ' + report['error'])
     elif report.get('time'):
@@ -237,8 +237,19 @@ def _send_connection_batch(*, update=False, connection_at):
     # One header bubble: separate provider-label bubbles were only scroll on a phone.
     counts=' · '.join(f'{label} {total}' for provider,label in (('claude','Claude Code'),('codex','Codex'),('agy','Antigravity'))
                       if (total:=sum(card[0][0]==provider for card in cards)))
-    messages=[('\n'.join(['talkturn update' if update else 'talkturn in',computer_label(),
-                          counts or '연결된 세션 없음','답장: help · 세션 · out']),None)]
+    header=['talkturn update' if update else 'talkturn in',computer_label(),counts or '연결된 세션 없음']
+    if cards:
+        settings=read_json('delivery.json',{})
+        if settings.get('reply_routing_enabled') is False:
+            header.append('작업 답장 꺼짐')
+        elif settings.get('reply_mode')=='manual':
+            header.append('작업에 요청 → 새 메시지로 ‘톡턴 전달 T번호 내용’')
+        else:
+            header.append('[작업 제목]에 답장 → 요청 보내기')
+        header.append('이 안내에 help 답장 → 사용법')
+    else:
+        header.append('PC의 톡턴에서 받을 작업을 선택하세요.')
+    messages=[('\n'.join(header),None)]
     for provider in ('claude','codex','agy'):
         for key,heading,origin in cards:
             if key[0]==provider:

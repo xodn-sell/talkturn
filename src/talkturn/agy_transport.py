@@ -10,7 +10,7 @@ import threading
 import time
 import uuid
 
-from . import runtime
+from . import __version__, runtime
 
 
 ACK_TIMEOUT = 30
@@ -71,7 +71,7 @@ class AgyClient:
         self.reader.start()
         try:
             result = self.call('initialize', {'protocolVersion': 1, 'clientCapabilities': {},
-                'clientInfo': {'name': 'talkturn', 'version': '0.1.0'}})
+                'clientInfo': {'name': 'talkturn', 'version': __version__}})
             if type(result.get('protocolVersion')) is not int or result['protocolVersion'] != 1:
                 raise RuntimeError('지원하지 않는 AGY ACP 프로토콜입니다.')
             self.capabilities = result.get('agentCapabilities', {})

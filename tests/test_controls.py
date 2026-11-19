@@ -21,6 +21,194 @@ class ControlsTest(unittest.TestCase):
             self.stack.enter_context(patch.object(module,'ROOT',self.root))
         self.stack.enter_context(patch.dict(os.environ,{'CODEX_HOME':str(self.root/'codex'),'CLAUDE_CONFIG_DIR':str(self.root/'claude')}))
 
+    def test_phone_receipt_only_reports_current_connection_and_never_echoes_logs(self):
+        command=commands.parse('톡턴 접수',remote=True)
+        runtime.write_json('connection.json',{'at':10,'verified':True})
+        runtime.write_json('delivery.json',{})  # Paired installations can predate reply_enabled_at.
+        epoch=bridge._connection_identity(runtime.read_json('delivery.json'))
+        self.assertIn('기록이 없습니다',commands.execute(command,remote=True))
+        for stage,label in [('accepted','접수됐습니다'),('not_sent','전달되지 않았습니다'),
+                            ('forward_failed','다시 보내기 전에'),('unmatched_reply','받을 작업을 찾지 못했습니다')]:
+            bridge._reply_log(stage,'PRIVATE_BODY','PRIVATE_ID',connection=epoch)
+            reply=commands.execute(command,remote=True)
+            self.assertIn(label,reply)
+            self.assertNotIn('PRIVATE',reply)
+        bridge._reply_log('plain_note','PRIVATE_NOTE')
+        self.assertEqual(commands.execute(command,remote=True),reply)
+        runtime.write_json('connection.json',{'at':20,'verified':True})
+        self.assertIn('기록이 없습니다',commands.execute(command,remote=True))
+
+    def test_codex_queue_warning_reaches_ack_and_receipt_without_resubmitting(self):
+        target={'id':'1234abcde','text':'결과','origin':{'source':'codex','session_id':'original','name':'테스트 작업'}}
+        runtime.write_json('connection.json',{'at':1,'verified':True})
+        for message in ('인용 답장','톡턴 전달 T1234ABCD 번호 답장'):
+            with self.subTest(message=message):
+                self.baseline()
+                runtime.write_json('result-origins.json',[target])
+                def read():
+                    return [{'text':message,'date':'','time':''}]
+                with patch.object(bridge,'native_read',side_effect=read),patch.object(bridge,'screenshot',return_value='fixture.png'), \
+                     patch.object(bridge,'message_kind',return_value='plain'),patch.object(bridge,'control_reply',return_value=None), \
+                     patch.object(bridge,'choose_origin',return_value=target),patch.object(bridge,'executable',return_value='codex'), \
+                     patch.object(bridge.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'queued','resume warning')) as queue, \
+                     patch.object(plain_delivery,'deliver',return_value=True) as send:
+                    bridge.poll_once()
+                    bridge.poll_once()
+                    queue.assert_called_once()
+                    self.assertEqual(queue.call_args.args[0][2:4],['--thread','original'])
+                    self.assertEqual(send.call_count,1)
+                    self.assertEqual(send.call_args.args[0],'[테스트 작업]\n'+commands.QUEUED_NOTICE)
+                    self.assertIn(commands.QUEUED_NOTICE,commands.receipt_text())
+                    self.assertEqual(runtime.read_json('last-reply-state.json')['stage'],'queued')
+
+    def test_repairing_during_command_read_or_execution_drops_stale_effects(self):
+        for during in ('read','execute'):
+            with self.subTest(during=during):
+                self.baseline()
+                runtime.write_json('connection.json',{'at':1})
+                def read():
+                    if during=='read':
+                        runtime.write_json('connection.json',{'at':2})
+                    return [{'text':'톡턴 접수','date':'','time':''}]
+                def execute(*args,**kwargs):
+                    runtime.write_json('connection.json',{'at':2})
+                    return 'old connection response'
+                with patch.object(bridge,'native_read',side_effect=read), \
+                     patch.object(bridge,'screenshot',return_value='sample.png'), \
+                     patch.object(bridge,'message_kind',return_value='plain'), \
+                     patch.object(commands,'execute',side_effect=execute) as handle, \
+                     patch.object(plain_delivery,'deliver') as send:
+                    bridge.poll_once()
+                    self.assertEqual(handle.call_count,int(during=='execute'))
+                    send.assert_not_called()
+
+    def test_phone_tell_uses_the_selected_provider_receipt_once(self):
+        from talkturn import sessions
+        row={'provider':'codex','session_id':'original','name':'작업 A'}
+        for case in ('accepted','queued','changed_before_send','changed_after_send','uncertain'):
+            with self.subTest(case=case):
+                self.baseline()
+                runtime.write_json('ui.json',{'selected_session':row})
+                runtime.write_json('connection.json',{'at':1,'verified':True})
+                runtime.write_json('last-selected-send.json',{'stage':'stale-PRIVATE'})
+                messages=[{'text':'톡턴 보내 두  칸 유지','date':'','time':''}]
+                def validate(target):
+                    if case=='changed_before_send':
+                        runtime.write_json('connection.json',{'at':2,'verified':True})
+                    return target
+                def queue(command,**kwargs):
+                    if case=='changed_after_send':
+                        runtime.write_json('connection.json',{'at':2,'verified':True})
+                    if case=='uncertain':
+                        raise RuntimeError('PRIVATE provider detail')
+                    return subprocess.CompletedProcess(command,0,'PRIVATE provider output','warning' if case=='queued' else '')
+                with patch.object(sessions,'validate_target',side_effect=validate), \
+                     patch.object(bridge,'native_read',side_effect=lambda:copy.deepcopy(messages)), \
+                     patch.object(bridge,'screenshot',return_value='fixture.png'),patch.object(bridge,'message_kind',return_value='plain'), \
+                     patch.object(bridge,'executable',return_value='codex'),patch.object(bridge.subprocess,'run',side_effect=queue) as provider, \
+                     patch.object(plain_delivery,'deliver',return_value=True) as send:
+                    bridge.poll_once()
+                    bridge.poll_once()
+                    self.assertEqual(provider.call_count,int(case!='changed_before_send'))
+                    if provider.called:
+                        self.assertEqual(provider.call_args.args[0],['codex','queue','--thread','original','--message','두  칸 유지','--resume'])
+                    stale=case.startswith('changed_')
+                    self.assertEqual(send.call_count,int(not stale))
+                    if not stale:
+                        self.assertNotIn('PRIVATE',send.call_args.args[0])
+                        self.assertTrue(send.call_args.kwargs['literal_text'])
+                    if case in ('accepted','queued'):
+                        self.assertEqual(runtime.read_json('last-selected-send.json')['stage'],case)
+                        self.assertEqual(runtime.read_json('last-reply-state.json')['stage'],case)
+                    messages.append({'text':'톡턴 접수','date':'','time':''})
+                    bridge.poll_once()
+                    status=send.call_args.args[0]
+                    expected={'accepted':'접수됐습니다','queued':commands.QUEUED_NOTICE,'uncertain':'다시 보내기 전에'}
+                    self.assertIn('기록이 없습니다' if stale else expected[case],status)
+                    self.assertNotIn('PRIVATE',status)
+
+    def test_phone_display_help_is_read_only_and_can_be_replied_to(self):
+        menu=commands.execute(commands.parse('톡턴 표시',remote=True),remote=True)
+        self.assertTrue(bridge.control_quote(menu))
+        self.assertIn('표시 text',menu)
+        self.assertIn('현재 image',menu)
+        self.assertFalse((self.root/'delivery.json').exists())
+        runtime.write_json('delivery.json',{'long_text':'auto'})
+        self.assertIn('현재 auto',commands.execute(['display'],remote=True))
+
+    def test_original_text_requires_verified_connection_watched_session_and_unique_result(self):
+        settings={'mode':'native','window_id':3,'process_id':4,'reply_enabled_at':12}
+        runtime.write_json('delivery.json',settings)
+        runtime.write_json('connection.json',{'verified':True,'at':10,'window_id':3,'process_id':4})
+        (self.root/'reply-enabled').touch()
+        watches=[{'provider':'codex','session_id':'one','name':'결제 화면'}]
+        runtime.write_json('ui.json',{'watched_sessions':watches})
+        origin={'source':'codex','session_id':'one','kind':'result'}
+        current={'id':'abcdef120'+'0'*55,'origin':origin,'text':'[결제 화면]\n첫 답','sent_at':14}
+        other={**current,'id':'abcdef121'+'0'*55,'origin':{**origin,'source':'claude'},'text':'PRIVATE'}
+        hidden=[other,{**other,'id':'b'*64,'origin':origin,'sent_at':11},
+                {**other,'id':'c'*64,'origin':{**origin,'kind':'session_anchor'}},
+                {**other,'id':'d'*64,'origin':{**origin,'request_id':'question'}}]
+        registry=[current,*hidden]
+        runtime.write_json('result-origins.json',registry)
+        def original(*args):
+            return commands.execute(commands.parse('톡턴 원문'+' '.join(['',*args]),remote=True),remote=True)
+        self.assertEqual(original(),current['text'])
+        for prefix in ('TABCDEF12','TABCDEF121','TBBBBBBBB','TCCCCCCCC','TDDDDDDDD','TFFFFFFFF'):
+            self.assertIn('이 번호의 원문이 없습니다',original(prefix))
+        self.assertEqual(original('tabcdef120'),current['text'])
+        second={**current,'id':'agy-example','origin':{'source':'agy','session_id':'two','kind':'result'},
+                'text':'[배너]\n다른 답'}
+        runtime.write_json('result-origins.json',registry+[second])
+        runtime.write_json('ui.json',{'watched_sessions':watches+[{'provider':'agy','session_id':'two','name':'배너'}]})
+        listing=original()
+        self.assertIn('TABCDEF120 · 결제 화면',listing)
+        self.assertNotIn('PRIVATE',listing)
+        self.assertNotIn('다른 답',listing)
+        other_code=next(line.split()[0] for line in listing.splitlines() if '배너' in line)
+        self.assertEqual(original(other_code),second['text'])
+        # On a selection change, an already computed reply must never escape.
+        epoch=bridge._connection_identity(settings)
+        runtime.write_json('ui.json',{'watched_sessions':watches})
+        with patch.object(plain_delivery,'deliver') as send:
+            self.assertFalse(plain_delivery.deliver_original(second['text'],[other_code],'command-test',epoch))
+            send.assert_not_called()
+        runtime.write_json('delivery.json',{**settings,'window_id':5})
+        self.assertIn('연결이 없습니다',original())
+        runtime.write_json('delivery.json',settings)
+        (self.root/'reply-enabled').unlink()
+        self.assertIn('연결이 없습니다',original())
+
+    def test_control_original_delivers_stored_text_without_reattaching_files(self):
+        self.baseline()
+        (self.root/'reply-enabled').touch()
+        runtime.write_json('delivery.json',{'mode':'native','window_id':3,'process_id':4})
+        runtime.write_json('connection.json',{'verified':True,'at':10,'window_id':3,'process_id':4})
+        runtime.write_json('ui.json',{'watched_sessions':[{'provider':'codex','session_id':'one','name':'샘플'}]})
+        body='[샘플]\n컴퓨터: 테스트\n\n'+('긴 본문입니다. '*180)+'![참고](example.png)'
+        result={'id':'a'*64,'text':body,'origin':{'source':'codex','session_id':'one','kind':'result'},'sent_at':14}
+        runtime.write_json('result-origins.json',[result])
+        message={'sender':'self','time':'오후 1:00','text':'원문','is_photo':False,'is_file':False}
+        isolated={'path':'fixture','body':'원문','quote_kind':'text','quote_text':'talkturn in'}
+        with patch.object(bridge,'native_read',return_value=[message]),patch.object(bridge,'screenshot',return_value='fixture'), \
+             patch.object(bridge,'isolate_reply',return_value=isolated),patch.object(bridge,'call_luna') as model, \
+             patch.object(plain_delivery,'extract_images') as extract,patch('talkturn.render.text_images') as render, \
+             patch.object(plain_delivery.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'{"verified":true}','')) as send:
+            bridge.poll_once()
+            self.assertEqual(json.loads(send.call_args.kwargs['input']),{'text':body,'images':[]})
+            extract.assert_not_called()
+            render.assert_not_called()
+            model.assert_not_called()
+            self.assertEqual(runtime.read_json('result-origins.json'),[result])
+            # Export-shaped stored text keeps the same image-only safety fallback as display text.
+            render.return_value=['safe-page.png']
+            plain_delivery.deliver('2026년 11월 19일 목요일','export-shaped',literal_text=True,render_long=False)
+            render.assert_called_once()
+            packet=json.loads(send.call_args.kwargs['input'])
+            self.assertEqual(packet['images'],['safe-page.png'])
+            self.assertIn('원문을 사진으로',packet['text'])
+            self.assertNotIn('목요일',packet['text'])
+
     def test_quota_missing_is_not_zero_and_stale_is_labelled(self):
         raw={'claude':{'accounts':[{'number':1,'active':True,'email':'private@example.com','usageStatus':'ok',
             'usage':{'fiveHour':{'pct':0},'sevenDay':{'pct':88}}},
@@ -230,14 +418,14 @@ class ControlsTest(unittest.TestCase):
                               ('TalkTurn 명령',True),('[talkturn in 답장 기능]',False),('Claude Code',False),
                               ('TalkTurn 결과 T1234ABCD · 이미지 2장',False)):
             self.assertEqual(bridge.control_quote(quote),control,quote)
-        # The phone's help is short, still a control bubble itself, and the full list stays reachable.
+        # The phone's help is short and still a control bubble itself; `help` is the only help command there.
         phone=commands.execute(['help'],remote=True)
         self.assertLess(len(phone.splitlines()),12)
         self.assertTrue(bridge.control_quote(' '.join(phone.splitlines()[:3])))
-        self.assertEqual(commands.execute(['help','all'],remote=True),commands.execute(['help']))
+        self.assertRaises(ValueError,commands.execute,['help','all'],remote=True)
         self.baseline()
         runtime.write_json('result-origins.json',[{'id':'anchor','text':'[작업]','origin':{'source':'codex','session_id':'thread'}}])
-        for body,quote,executed in (('Help','talkturn in',['help']),('톡턴 out','[작업]',None)):
+        for body,quote,executed in (('Help','talkturn in',['help']),('톡턴 out','[작업]',None),('톡턴 원문','[작업]',None)):
             message={'sender':'self','time':'오후 1:00','text':body,'is_photo':False,'is_file':False}
             isolated={'path':'crop.png','body':body,'quote_kind':'text','quote_text':quote}
             with patch.object(bridge,'native_read',side_effect=lambda:[copy.deepcopy(message)]), \

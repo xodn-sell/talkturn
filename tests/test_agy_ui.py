@@ -135,6 +135,12 @@ class AgyUiTest(unittest.TestCase):
         self.assertIn('Codex 0개', text)
         self.assertNotIn('AGY', text)
         self.assertNotIn('5개', text)
+        # Conversations read over ACP show AGY as connected, still without a login count.
+        console = Console(file=io.StringIO(), width=100, height=30)
+        console.print(terminal.header(console, {**view, 'rows': [{'provider': 'agy', 'reachable': True}]}))
+        text = console.file.getvalue()
+        self.assertIn('AGY 연결됨', text)
+        self.assertNotIn('5개', text)
 
     def picker(self, view, keys):
         console = Console(file=io.StringIO(), force_terminal=True, legacy_windows=False, width=80, height=24)

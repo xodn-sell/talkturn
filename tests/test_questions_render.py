@@ -150,8 +150,11 @@ class QuestionsAndRenderTest(unittest.TestCase):
                  patch.object(reply_bridge,'call_luna',return_value={'body':'reply','quote':record['caption'],'quote_kind':'text'}):
                 self.assertEqual(reply_bridge.choose_origin({'text':'reply'},[record],'unused-viewport.png'),record)
             runtime.write_json('delivery.json',{'mode':'native'})
-            plain_delivery.deliver('기본 결과','default-image',origin=origin)
-            self.assertEqual(json.loads(send.call_args.kwargs['input'])['text'],'')
+            plain_delivery.deliver('기본 결과','default-image',origin=origin,images=[str(extra)])
+            packet=json.loads(send.call_args.kwargs['input'])
+            self.assertEqual(packet['text'],'')
+            self.assertEqual(len(packet['images']),2)
+            self.assertEqual(packet['images'][-1],str(extra))
             model.assert_not_called()
         (self.root/'enabled').touch()
         payload={'hook_event_name':'Stop','session_id':'image-session','last_assistant_message':'완료'}
@@ -166,6 +169,16 @@ class QuestionsAndRenderTest(unittest.TestCase):
             'tool_input':{'questions':[{'question':'어느 색?','header':'색','options':[{'label':'파랑'},{'label':'노랑'}],'multiSelect':False}]}}
         record=questions.prepare('claude',payload)
         self.save(record)
+        card=questions.describe(record)
+        self.assertIn('선택지 번호나 답',card)
+        self.assertNotIn('세미콜론',card)
+        multiple=questions.prepare('claude',{**payload,'tool_input':{'questions':[
+            *payload['tool_input']['questions'],{'question':'이유를 알려 주세요.'}]}})
+        self.assertIn('세미콜론(;)',questions.describe(multiple))
+        for settings in ({'reply_mode':'manual'},{'reply_routing_enabled':False}):
+            runtime.write_json('delivery.json',settings)
+            self.assertIn('원래 작업 창에서 답하세요',questions.describe(record))
+            self.assertNotIn('적어 답장하세요',questions.describe(record))
         questions.answer(record['id'],'2')
         saved=runtime.read_json('questions.json')[0]
         output=saved['response']['hookSpecificOutput']
@@ -179,13 +192,19 @@ class QuestionsAndRenderTest(unittest.TestCase):
     def test_permission_needs_explicit_exact_answer_and_complete_action(self):
         record=questions.prepare('codex',{'hook_event_name':'PermissionRequest','tool_name':'Bash','tool_input':{'command':'echo test'}})
         self.save(record)
-        with self.assertRaises(ValueError):
+        self.assertIn('‘승인’ 또는 ‘거절’',questions.describe(record))
+        with self.assertRaises(questions.AnswerRejected):
             questions.answer(record['id'],'아마 승인')
         questions.answer(record['id'],'승인')
         self.assertEqual(runtime.read_json('questions.json')[0]['response']['hookSpecificOutput']['decision'],{'behavior':'allow'})
         incomplete=questions.prepare('claude',{'hook_event_name':'PermissionRequest','tool_name':'Write','tool_input':{'file_path':'x','content':'hidden'}})
         self.save(incomplete)
-        with self.assertRaises(ValueError):
+        card=questions.describe(incomplete)
+        self.assertIn('PC의 원래 작업 창에서 전체 내용을 확인하세요',card)
+        self.assertIn('이 말풍선에 ‘거절’로 답장하세요',card)
+        self.assertNotIn('hidden',card)
+        self.assertEqual(questions.quoted_request_id(card),incomplete['id'])
+        with self.assertRaisesRegex(questions.AnswerRejected,'PC의 원래 작업 창'):
             questions.answer(incomplete['id'],'승인')
         questions.answer(incomplete['id'],'거절')
         self.assertEqual(runtime.read_json('questions.json')[0]['response']['hookSpecificOutput']['decision']['behavior'],'deny')
@@ -194,7 +213,7 @@ class QuestionsAndRenderTest(unittest.TestCase):
         record=questions.prepare('claude',{'hook_event_name':'PermissionRequest','tool_input':{'command':'echo test'}})
         record['expires_at']=time.time()-1
         self.save(record)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(questions.AnswerRejected):
             questions.answer(record['id'],'승인')
         codex=questions.prepare('codex',{'hook_event_name':'PreToolUse','tool_name':'request_user_input','tool_input':{'questions':[{'question':'진행?'}]}})
         self.save(codex)

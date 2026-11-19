@@ -1,6 +1,7 @@
 """One command vocabulary shared by terminal and paired Kakao self-chat."""
 import json
 import re
+from datetime import datetime
 from . import providers
 from .runtime import ROOT, read_json, write_json, locked
 
@@ -8,10 +9,10 @@ ALIASES = {'도움말':'help','도움':'help','상태':'status','연결':'ping',
            '계정':'accounts','전환':'switch','모델':'model','모델목록':'models','설정':'settings',
            '노력도':'effort','작업':'sessions','시작':'start','in':'start','중지':'stop', '종료':'quit',
            '알림':'notifications','답장':'replies','라이선스':'license','질문':'questions','응답':'answer',
-           '표시':'display','중계':'router','전달':'send','섹션':'sessions','세션':'sessions',
+           '표시':'display','원문':'original','중계':'router','전달':'send','섹션':'sessions','세션':'sessions',
            '선택':'select','해제':'unselect','체크':'watch','보내':'tell','메시지':'tell','한도알림':'quota-alert','유지':'keep',
            '계정추가':'account-add','계정전환':'switch','계정추가하기':'account-add','계정전환하기':'switch',
-           '컴퓨터이름':'computer-name','화면':'screen','스샷':'screen','스크린샷':'screen','screenshot':'screen',
+           '컴퓨터이름':'computer-name','접수':'receipt','업데이트':'update','화면':'screen','스샷':'screen','스크린샷':'screen','screenshot':'screen',
            'agy':'agy','antigravity':'agy','안티그래비티':'agy'}
 PROVIDERS = {'클코':'claude','클로드':'claude','코덱스':'codex','chatgpt':'codex',
              'gpt':'codex','챗지피티':'codex','챗gpt':'codex','중계':'relay','전부':'all','전체':'all',
@@ -28,6 +29,7 @@ HELP = '''TalkTurn 명령
 보내 내용  → 선택한 원래 세션에 전달
 해제 / 세션 recent
 상태 / 연결 / 사용량 [claude|codex|agy] / 계정
+접수  → 이번 연결에서 최근 답장을 원래 작업이 받았는지 확인
 컴퓨터이름 [이름]  → 현재 PC의 TalkTurn 표시 이름
 전환 claude 2  → 등록된 2번 계정
 모델  → 현재 기본값
@@ -40,21 +42,71 @@ HELP = '''TalkTurn 명령
 알림 on|off / 답장 on|off
 한도알림 on|off / 유지
 질문 / 응답 Q1234ABCD 답변
+원문 [T번호]  → 이번 연결에서 체크한 작업이 보낸 원문 복사
 표시 auto|text|image / 중계 on|off
 out  → 연결 끊기 (마우스 잠금도 풀림)
 답장 없이 일반 메시지로 보낼 때: 앞에 '톡턴 ' 또는 '/talkturn ' 추가.
 예: 톡턴 사용량
 작업 결과에서 '답장'하면 원래 세션으로 전달.'''
 # The phone gets only what is done from a phone; the full list is one screen too long there.
-PHONE_HELP = '''TalkTurn · 'talkturn in'에 답장으로 쓰는 명령
-세션  → 연결할 수 있는 세션 보기
-체크 C-… X-… G-…  → 받을 세션 바꾸기
+PHONE_HELP = '''TalkTurn 사용법
+작업에 요청 → 그 작업 제목 카드에 답장
+아래 명령 → 'talkturn in' 안내에 답장으로 단어만
+세션  → 지금 받을 수 있는 작업과 코드
+체크 C-… X-… G-…  → 받을 작업을 이 코드들로 교체
 화면  → PC 화면 스샷
 사용량  → 남은 한도
-out  → 연결 끊기
+접수  → 최근 답장이 작업에 들어갔는지
+원문  → 받은 답을 글자로 다시 받기
+out  → 연결 끊기'''
 
-세션 카드나 결과에 답장하면 그 세션으로 전달.
-help all  → 전체 명령'''
+
+QUEUED_NOTICE='대기열에 저장됐어요. PC에서 원래 작업을 열어 주세요.'
+
+
+def forward_response(receipt):
+    if receipt.get('stage')=='queued':
+        return QUEUED_NOTICE
+    return '원래 세션에 전달 접수.'+(' 재개 상태는 원래 창에서 확인 필요.' if receipt.get('resume_warning') else '')
+
+
+def send_numbered(selector,message):
+    if not re.fullmatch(r'T[0-9A-Fa-f]{8}',selector):
+        raise ValueError('전달 형식: 톡턴 전달 T1234ABCD 내용')
+    matches=[item for item in read_json('result-origins.json',[]) if 'T'+item['id'][:8].upper()==selector.upper()]
+    if len(matches)!=1 or matches[0]['origin'].get('request_id'):
+        raise ValueError('작업 번호가 없거나 모호함. 톡턴 작업으로 확인.')
+    from .reply_bridge import forward
+    receipt=forward(matches[0]['origin'],message)
+    if not receipt.get('accepted'):
+        raise RuntimeError('원래 작업의 접수를 확인할 수 없습니다. 다시 보내기 전에 원래 작업 창을 확인하세요.')
+    return receipt
+
+
+def receipt_text():
+    settings=read_json('delivery.json',{})
+    connection=read_json('connection.json',{})
+    epoch=[connection.get('at') or 0,settings.get('reply_enabled_at') or 0]
+    heading='TalkTurn 최근 답장'
+    if not epoch[0] or not connection.get('verified'):
+        return heading+'\n확인된 카톡 연결이 없습니다.'
+    uncertain='접수 미확인. 다시 보내기 전에 PC의 작업 창을 확인하세요.'
+    states={
+        'queued':QUEUED_NOTICE,
+        'accepted':'원래 작업에 접수됐습니다.',
+        'not_sent':'전달되지 않았습니다. PC의 작업 창을 확인하세요.',
+        'unmatched_reply':'받을 작업을 찾지 못했습니다. 작업 제목에 답장하세요.',
+        'duplicate_body':'같은 답장이 겹쳐 전달하지 않았습니다. PC의 작업 창을 확인하세요.',
+        'routing_changed':'연결이나 작업 선택이 바뀌어 전달하지 않았습니다.',
+        'dispatching':uncertain,
+        'forward_failed':uncertain,
+    }
+    # Keep the last identified reply even when ordinary notes rotate the diagnostic log.
+    event=read_json('last-reply-state.json',{})
+    if event.get('connection_at')==epoch and event.get('stage') in states:
+        stamp=datetime.fromtimestamp(event['time']).strftime('%H:%M:%S')
+        return f"{heading} · PC {stamp}\n{states[event['stage']]}"
+    return heading+'\n이번 연결의 답장 기록이 없습니다.'
 
 
 def selected_section():
@@ -170,8 +222,13 @@ def execute(parts, *, remote=False):
         section=select_section(args[0])
         from .tasks import status_text
         return status_text(section)
-    if command == 'help' and args in ([],['all']):
-        return PHONE_HELP if remote and not args else HELP
+    if command == 'help' and not args:
+        return PHONE_HELP if remote else HELP
+    if command=='receipt' and not args:
+        return receipt_text()
+    if command=='original':
+        from .plain_delivery import original_text
+        return original_text(args)
     if command=='quota-alert' and len(args)<=1:
         if args and args[0] not in ('on','off','켜','꺼'):
             raise ValueError('한도알림 on 또는 off')
@@ -265,14 +322,14 @@ def execute(parts, *, remote=False):
         from .questions import answer
         return answer(*args)
     if command=='send' and len(args)==2:
-        if not re.fullmatch(r'T[0-9A-Fa-f]{8}',args[0]):
-            raise ValueError('전달 형식: 톡턴 전달 T1234ABCD 내용')
-        matches=[item for item in read_json('result-origins.json',[]) if 'T'+item['id'][:8].upper()==args[0].upper()]
-        if len(matches)!=1 or matches[0]['origin'].get('request_id'):
-            raise ValueError('작업 번호가 없거나 모호함. 톡턴 작업으로 확인.')
-        from .reply_bridge import forward
-        receipt=forward(matches[0]['origin'],args[1])
-        return '원래 세션에 전달 접수.'+(' 재개 상태는 원래 창에서 확인 필요.' if receipt.get('resume_warning') else '')
+        return forward_response(send_numbered(*args))
+    if command=='display' and not args:
+        mode=read_json('delivery.json',{}).get('long_text','image')
+        options=(f'TalkTurn 표시 · 현재 {mode}\n'
+                 '표시 auto · 짧은 답은 글, 긴 답은 사진\n'
+                 '표시 text · 글로 받기\n'
+                 '표시 image · 사진으로 받기')
+        return options+('\n바꾸려면 이 안내에 답장하세요.' if remote else '')
     if command in ('display','router') and len(args)==1:
         allowed=('auto','text','image') if command=='display' else ('on','off')
         if args[0] not in allowed:
@@ -282,7 +339,7 @@ def execute(parts, *, remote=False):
             data['long_text' if command=='display' else 'reply_mode']=args[0] if command=='display' else ('luna' if args[0]=='on' else 'manual')
             write_json('delivery.json',data)
         if command=='display':
-            return '긴 글 표시: '+args[0]+'\nauto는 1,200자 초과 시 원문을 이미지로 변환. LLM 호출 없음.'
+            return '긴 글 표시: '+args[0]
         return '자동 답장 판별 켜짐. 설정된 중계 모델 사용.' if args[0]=='on' else 'LLM 없는 중계 켜짐.\n작업 번호로 전달: 톡턴 전달 T1234ABCD 내용\n카톡 인용 답장 자동 판별은 꺼짐.'
     if command=='screen' and not args:
         from .computer import computer_label
@@ -310,4 +367,4 @@ def execute(parts, *, remote=False):
             stop()
             return 'talkturn out'
         return disconnect()
-    raise ValueError('지원하지 않는 명령/인수. 도움말: 톡턴 도움말' if remote else '지원하지 않는 명령/인수. help로 확인.')
+    raise ValueError('지원하지 않는 명령/인수. help로 확인.')

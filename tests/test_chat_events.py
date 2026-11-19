@@ -72,6 +72,15 @@ class ChatEventsTest(unittest.TestCase):
             self.assertEqual(len(packets),count);self.assertIn('result-a2',pending_ids())
             self.assertEqual(runtime.read_json('reply-log.json')[-1]['stage'],'forward_failed')
 
+            def unavailable(*_):
+                raise reply_bridge.SessionUnavailable('PC에서 원래 작업을 열어주세요.')
+            result,calls=poll('different request',target,unavailable)
+            self.assertEqual((result['forwarded'],calls),(0,1))
+            self.assertIn('접수되지 않았습니다',packets[-1]['text'])
+            self.assertNotIn('different request',packets[-1]['text'])
+            self.assertIn('result-a2',pending_ids())
+            self.assertEqual(runtime.read_json('reply-log.json')[-1]['stage'],'not_sent')
+
             def race(*_):
                 plain_delivery.deliver('arrived during forwarding','result-a3',origin=source)
                 return {'accepted':True}

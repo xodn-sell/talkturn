@@ -115,7 +115,7 @@ class QuotaAndTerminalTest(unittest.TestCase):
         text=output.getvalue()
         self.assertIn('72%',text)
         self.assertIn('번호',text)
-        self.assertIn('세션 이름',text)
+        self.assertIn('카톡으로 받을 작업',text)
         self.assertNotIn('gpt-6-astra',text)
         self.assertNotIn('추론 강도',text)
         self.assertNotIn('현재 상태',text)

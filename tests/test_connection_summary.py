@@ -10,6 +10,10 @@ from rich.console import Console
 
 from talkturn import cli, commands, plain_delivery, runtime, service, sessions, terminal
 
+WORK_REPLY = '[작업 제목]에 답장 → 요청 보내기'
+CONTROL_REPLY = '이 안내에 help 답장 → 사용법'
+EMPTY_SELECTION = 'PC의 톡턴에서 받을 작업을 선택하세요.'
+
 
 class ConnectionSummaryTest(unittest.TestCase):
     def setUp(self):
@@ -83,7 +87,7 @@ class ConnectionSummaryTest(unittest.TestCase):
         with patch.object(plain_delivery, 'deliver', side_effect=send) as deliver, \
              patch.object(service.time, 'time', return_value=42):
             service.ping()
-        self.assertEqual(sent,['talkturn in\n컴퓨터: 작업 PC\n연결된 세션 없음\n답장: help · 세션 · out'])
+        self.assertEqual(sent,['talkturn in\n컴퓨터: 작업 PC\n연결된 세션 없음\n'+EMPTY_SELECTION])
         self.assertEqual(runtime.read_json('connection.json'),
                          {'verified': True, 'window_id': 123, 'process_id': 456, 'at': 42})
 
@@ -105,7 +109,7 @@ class ConnectionSummaryTest(unittest.TestCase):
              patch.object(plain_delivery,'deliver',side_effect=send):
             service.ping()
         self.assertEqual([text for text,_,_ in sent],[
-            'talkturn in\n컴퓨터: 작업 PC\nClaude Code 2 · Codex 1\n답장: help · 세션 · out',
+            '\n'.join(['talkturn in','컴퓨터: 작업 PC','Claude Code 2 · Codex 1',WORK_REPLY,CONTROL_REPLY]),
             '[같은 제목] · '+sessions.code('claude','claude-one'),'[앱 작업]',
             '[같은 제목] · '+sessions.code('codex','codex-one')])
         self.assertEqual(len({key for _,key,_ in sent}),4)
@@ -120,6 +124,21 @@ class ConnectionSummaryTest(unittest.TestCase):
         self.assertEqual(origins[1]['name'],'앱 작업')
         self.assertEqual(runtime.read_json('connection.json'),
                          {'verified':True,'window_id':123,'process_id':456,'at':42})
+
+    def test_header_only_offers_work_reply_when_routing_is_on(self):
+        from talkturn.reply_bridge import control_quote
+        runtime.write_json('ui.json',{'watched_sessions':[{'provider':'codex','session_id':'sample','name':'예시 작업'}]})
+        for settings, hint in [({},WORK_REPLY),({'reply_mode':'manual'},'톡턴 전달 T번호 내용'),
+                               ({'reply_routing_enabled':False},'작업 답장 꺼짐')]:
+            with self.subTest(settings=settings), patch.object(plain_delivery,'deliver',return_value=True) as send:
+                runtime.write_json('delivery.json',settings)
+                service._send_connection_batch(update=True,connection_at=1)
+                header=send.call_args_list[0].args[0]
+                self.assertIn(hint,header)
+                self.assertIn(CONTROL_REPLY,header)
+                self.assertEqual(WORK_REPLY in header,not settings)
+                self.assertTrue(control_quote(header))
+                self.assertEqual(send.call_args_list[1].args[0],'[예시 작업]')
 
     def test_unverified_delivery_never_records_connection(self):
         previous = {'verified': False, 'at': 1}
@@ -147,13 +166,16 @@ class ConnectionSummaryTest(unittest.TestCase):
              patch.object(terminal,'keyboard_pick',side_effect=[['C-ONE','X-TWO'],['X-TWO','C-ONE'],['C-ONE'],[],[],'']), \
              patch.object(console,'input',return_value='quit'), \
              patch.object(service,'delivery_issues',return_value=[]), \
+             patch.object(cli,'confirm_connection',return_value=True), \
+             patch('talkturn.mouse_lock.engage',return_value=False), \
              patch.object(cli,'setup') as setup:
             cli.interactive()
             self.assertEqual(send.call_count,6)
             messages=[call.args[0] for call in send.call_args_list]
-            header=lambda counts:'talkturn update\n컴퓨터: 작업 PC\n'+counts+'\n답장: help · 세션 · out'
-            self.assertEqual(messages,[header('Claude Code 1 · Codex 1'),'[Claude 작업]','[Codex 작업]',
-                                       header('Claude Code 1'),'[Claude 작업]',header('연결된 세션 없음')])
+            header='talkturn update\n컴퓨터: 작업 PC\n'
+            self.assertEqual(messages,[header+'Claude Code 1 · Codex 1\n'+WORK_REPLY+'\n'+CONTROL_REPLY,'[Claude 작업]','[Codex 작업]',
+                                       header+'Claude Code 1\n'+WORK_REPLY+'\n'+CONTROL_REPLY,'[Claude 작업]',
+                                       header+'연결된 세션 없음\n'+EMPTY_SELECTION])
             self.assertTrue(all(call.kwargs['origin']['connection_at']==42
                                 for call in send.call_args_list if 'origin' in call.kwargs))
             self.assertEqual(runtime.read_json('connection.json'),receipt)
@@ -165,7 +187,7 @@ class ConnectionSummaryTest(unittest.TestCase):
             self.assertEqual(remote,'')  # The verified batch is the response; do not send another summary.
             self.assertEqual(send.call_count,10)
             self.assertEqual([call.args[0] for call in send.call_args_list[-2:]],
-                             [header('Codex 1'),'[Codex 작업]'])
+                             [header+'Codex 1\n'+WORK_REPLY+'\n'+CONTROL_REPLY,'[Codex 작업]'])
             self.assertEqual(send.call_args.kwargs['origin']['connection_at'],42)
             runtime.write_json('connection.json',{'verified':False})
             self.assertFalse(service.selection_update([]))
